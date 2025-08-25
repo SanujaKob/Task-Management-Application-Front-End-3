@@ -1,3 +1,4 @@
+<!-- Footer.vue -->
 <template>
   <footer class="footer">
     <p>© 2025 ABACUS Consulting | All rights reserved.</p>
@@ -8,13 +9,12 @@
 
 <style scoped>
 .footer {
-  margin-top: auto;        /* pushes footer to bottom */
   width: 100%;
-  padding: 16px;
+  padding: 3px;
   text-align: center;
-  background: #ffffff;
+  background: #363434;
   border-top: 1px solid #e5e7eb;
   font-size: 14px;
-  color: #000;
+  color: #ffffff;
 }
 </style>

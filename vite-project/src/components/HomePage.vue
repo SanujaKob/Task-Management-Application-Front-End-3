@@ -21,6 +21,10 @@
           <h3>Stay Notified</h3>
           <p>See what needs your attention first.</p>
         </article>
+         <article class="card">
+          <h3>Easy to Use</h3>
+          <p>All your tasks in once place</p>
+        </article>
       </section>
     </main>
   </div>
@@ -32,16 +36,16 @@
 
 <style scoped>
 .page {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;   /* full viewport width */
-  height: 100vh;  /* full viewport height */
+    /* No 100vh here */
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
   background: #ffffff;
   color: #000000;
   display: flex;
   flex-direction: column;
   overflow-y: auto; /* ✅ allow scrolling if content overflows */
+    /* Allow the parent .content to control height */
 }
 
 /* Hero */

@@ -3,18 +3,18 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  width: 65vw;                  /* 65% of viewport width */
+  width: 100vw;                  /* 100% of viewport width */
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
 }
 
 .nav > .container {
   max-width: 1200px;            /* fits laptop screens nicely */
-  margin: auto;               /* centers horizontally */
+  margin: 0 auto;               /* centers horizontally */
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 2px;
+  padding: 15px 1px;
   box-sizing: border-box;
 }
 
