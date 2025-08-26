@@ -1,39 +1,31 @@
 <template>
-  <div class="loading" role="status" aria-live="polite">
-    <div class="spinner"></div>
+  <div class="loading-screen" role="status" aria-live="polite">
     <h1>ABACUS Consulting</h1>
-    <h2>Task Management Application</h2>
-    <p>Loading application…</p>
+    <p>Loading Task Management Application...</p>
   </div>
 </template>
 
+<script setup></script>
+
 <style scoped>
-.loading {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;   /* full viewport width */
-  height: 100vh;  /* full viewport height */
+.loading-screen {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background: #000000;
-  color: #fff;
+  min-height: 100vh;           /* full height as you had */
+  background: #111;            /* black background */
+  color: #fff;                 /* white text */
+  font-family: "Poppins", system-ui, sans-serif;
   text-align: center;
-  font-display: "Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  padding: 24px;
 }
 
-.spinner {
-  width: 48px;
-  height: 48px;
-  border: 4px solid #fff;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+@media (prefers-reduced-motion: no-preference) {
+  .loading-screen {
+    opacity: 0;
+    animation: fadeIn 300ms ease-out forwards;
+  }
+  @keyframes fadeIn { to { opacity: 1; } }
 }
 </style>

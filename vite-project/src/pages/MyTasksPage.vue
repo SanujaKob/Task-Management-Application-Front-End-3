@@ -1,41 +1,29 @@
-<!-- src/pages/MyTasksPage.vue -->
+<script setup>
+import MyTaskDashboard from '../components/MyTaskDashboard.vue'
+import MyTasksBreakdown from '../components/MyTasksBreakdown.vue'
+</script>
+
 <template>
   <div class="page">
     <main class="hero">
-      <h1>My Task Dashboard</h1>
-      <p>
-        Current Progress
-      </p>
+      <h1>Stay on top of your tasks</h1>
+      <p>Simple, fast task management - create tasks, track progress, and hit deadlines.</p>
 
-      <section class="cards">
-        <article class="card">
-          <h3>Create & Assign</h3>
-          <p>Add tasks with priority, due dates, and assignees.</p>
-        </article>
-        <article class="card">
-          <h3>Track Progress</h3>
-          <p>Update status and % complete at a glance.</p>
-        </article>
-        <article class="card">
-          <h3>Stay Notified</h3>
-          <p>See what needs your attention first.</p>
-        </article>
-         <article class="card">
-          <h3>Easy to Use</h3>
-          <p>All your tasks in once place</p>
-        </article>
+      <!-- Dashboard (mock mode while backend is off) -->
+      <section class="home">
+        <MyTaskDashboard disableFetch />
+      </section>
+
+      <!-- Breakdown panels -->
+      <section class="home">
+        <MyTasksBreakdown />
       </section>
     </main>
   </div>
 </template>
 
-<script setup>
-// No script logic for now
-</script>
-
 <style scoped>
 .page {
-    /* No 100vh here */
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
@@ -43,11 +31,9 @@
   color: #000000;
   display: flex;
   flex-direction: column;
-  overflow-y: auto; /* ✅ allow scrolling if content overflows */
-    /* Allow the parent .content to control height */
+  overflow-y: auto;
+  font-family: "Poppins", system-ui, sans-serif;
 }
-
-/* Hero */
 .hero {
   max-width: 960px;
   margin: 40px auto;
@@ -63,25 +49,7 @@
   margin: 0 auto 20px;
   max-width: 600px;
 }
-
-/* Buttons */
-.actions {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-bottom: 28px;
-}
-.btn {
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: 1px solid #000000;
-  background: #000000;
-  color: #ffffff;
-  cursor: pointer;
-}
-.btn:hover { opacity: 0.85; }
-
-/* Cards */
+/* Optional page cards (unrelated to dashboard) */
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

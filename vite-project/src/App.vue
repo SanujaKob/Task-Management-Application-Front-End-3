@@ -1,20 +1,22 @@
 <template>
-  <div class="shell">
-    <Transition name="fade" mode="out-in">
-      <!-- Loading screen only -->
-      <LoadingPage v-if="loading" key="loading" />
+  <v-app>
+    <div class="shell">
+      <Transition name="fade" mode="out-in">
+        <!-- Loading screen only -->
+        <LoadingPage v-if="loading" key="loading" />
 
-      <!-- App layout after loading -->
-      <div v-else key="app" class="layout">
-        <Header />
-        <main class="content">
-          <!-- HomePage in 'embedded' mode so header/footer are visible -->
-          <HomePage :embedded="true" />
-        </main>
-        <Footer />
-      </div>
-    </Transition>
-  </div>
+        <!-- App layout after loading -->
+        <div v-else key="app" class="layout">
+          <Header />
+          <main class="content">
+            <!-- Render pages here; header/footer always visible -->
+            <RouterView />
+          </main>
+          <Footer />
+        </div>
+      </Transition>
+    </div>
+  </v-app>
 </template>
 
 <script setup>
@@ -23,7 +25,6 @@ import { ref, onMounted } from "vue";
 import Header from "./components/Header.vue";
 import Footer from "./components/Footer.vue";
 import LoadingPage from "./pages/LoadingPage.vue";
-import HomePage from "./pages/MyTasksPage.vue";
 
 const loading = ref(true);
 
@@ -40,7 +41,8 @@ body {
   margin: 0;
   background: #ffffff;
   color: #000000;
-  font-family: system-ui, sans-serif;
+  /* Use your font (Poppins). If not yet loaded, see step 3. */
+  font-family: "Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
 .shell {
@@ -56,7 +58,7 @@ body {
   flex-direction: column;
 }
 .content {
-  flex: 1; /* make footer stick to bottom when content is short */
+  flex: 1; /* keep footer stuck to bottom when content is short */
 }
 
 /* Fade transition */
