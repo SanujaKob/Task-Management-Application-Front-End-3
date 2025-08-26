@@ -73,8 +73,14 @@
           Create User
         </RouterLink>
 
-        <!-- My Profile (placeholder until you create route) -->
-        <a class="link" href="#">My Profile</a>
+        <!-- My Profile -->
+        <RouterLink
+          to="/profile"
+          class="link"
+          :class="{ active: $route.name === 'profile' }"
+        >
+          My Profile
+        </RouterLink>
       </nav>
     </div>
   </header>
