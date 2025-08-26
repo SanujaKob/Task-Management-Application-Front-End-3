@@ -1,11 +1,10 @@
-<!-- src/components/HomePage.vue -->
+<!-- src/pages/MyTasksPage.vue -->
 <template>
   <div class="page">
     <main class="hero">
-        <br/>
-      <h1>Stay on top of your work</h1>
+      <h1>My Task Dashboard</h1>
       <p>
-        Simple, fast task management—create tasks, track progress, and hit deadlines.
+        Current Progress
       </p>
 
       <section class="cards">

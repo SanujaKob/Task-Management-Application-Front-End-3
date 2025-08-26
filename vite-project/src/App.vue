@@ -22,8 +22,8 @@ import { ref, onMounted } from "vue";
 
 import Header from "./components/Header.vue";
 import Footer from "./components/Footer.vue";
-import LoadingPage from "./components/LoadingPage.vue";
-import HomePage from "./components/HomePage.vue";
+import LoadingPage from "./pages/LoadingPage.vue";
+import HomePage from "./pages/MyTasksPage.vue";
 
 const loading = ref(true);
 

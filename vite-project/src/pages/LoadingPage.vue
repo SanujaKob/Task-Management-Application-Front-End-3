@@ -18,10 +18,10 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background: #111;
+  background: #000000;
   color: #fff;
   text-align: center;
-  font-family: system-ui, sans-serif;
+  font-display: "Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
 .spinner {
