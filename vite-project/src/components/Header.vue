@@ -4,14 +4,14 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  width: 100vw;                  /* keep your full-bleed header */
+  width: 100vw;                  /* full width header */
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
 }
 
 .nav > .container {
-  max-width: 1200px;            /* fits laptop screens nicely */
-  margin: 0 auto;               /* centers horizontally */
+  max-width: 1200px;             /* fits laptop screens nicely */
+  margin: 0 auto;                /* centers horizontally */
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -28,7 +28,10 @@
   opacity: 0.9;
 }
 .link.active,
-.link:hover { opacity: 1; text-decoration: underline; }
+.link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
 </style>
 
 <template>
@@ -55,10 +58,22 @@
           Create Task
         </RouterLink>
 
-        <!-- Placeholders (wire these when routes exist) -->
+        <!-- Team Tasks (placeholder until you create route) -->
         <a class="link" href="#">Team Tasks</a>
+
+        <!-- Users (placeholder until you create route) -->
         <a class="link" href="#">Users</a>
-        <a class="link" href="#">Create User</a>
+
+        <!-- Create User -->
+        <RouterLink
+          to="/users/new"
+          class="link"
+          :class="{ active: $route.name === 'create-user' }"
+        >
+          Create User
+        </RouterLink>
+
+        <!-- My Profile (placeholder until you create route) -->
         <a class="link" href="#">My Profile</a>
       </nav>
     </div>
