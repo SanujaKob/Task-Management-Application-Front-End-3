@@ -61,8 +61,14 @@
         <!-- Team Tasks (placeholder until you create route) -->
         <a class="link" href="#">Team Tasks</a>
 
-        <!-- Users (placeholder until you create route) -->
-        <a class="link" href="#">Users</a>
+        <!-- Users -->
+        <RouterLink
+          to="/users"
+          class="link"
+          :class="{ active: $route.name === 'users' }"
+        >
+          Users
+        </RouterLink>
 
         <!-- Create User -->
         <RouterLink
