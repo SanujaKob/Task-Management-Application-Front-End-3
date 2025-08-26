@@ -1,13 +1,13 @@
+// src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
 import MyTasksPage from '../pages/MyTasksPage.vue'
 
-const routes = [
-    { path: '/', name: 'home', component: MyTasksPage },
-]
-
 const router = createRouter({
     history: createWebHistory(),
-    routes,
+    routes: [
+        { path: '/', name: 'home', component: MyTasksPage },
+        { path: '/tasks/new', name: 'create-task', component: () => import('../pages/CreateTask.vue') },
+    ],
     scrollBehavior: () => ({ top: 0 }),
 })
 

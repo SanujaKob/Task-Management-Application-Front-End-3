@@ -1,9 +1,10 @@
+<!-- src/components/Header.vue -->
 <style scoped>
 .nav {
   position: sticky;
   top: 0;
   z-index: 10;
-  width: 100vw;                  /* 100% of viewport width */
+  width: 100vw;                  /* keep your full-bleed header */
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
 }
@@ -34,14 +35,36 @@
   <header class="nav">
     <div class="container">
       <div class="brand">ABACUS Task Management Application</div>
+
       <nav>
-        <a class="link">My Tasks</a>
-        <a class="link">Create Task</a>
-        <a class="link">Team Tasks</a>
-        <a class="link">Users</a>
-        <a class="link">Create User</a>
-        <a class="link">My Profile</a>
+        <!-- My Tasks (home) -->
+        <RouterLink
+          to="/"
+          class="link"
+          :class="{ active: $route.name === 'home' }"
+        >
+          My Tasks
+        </RouterLink>
+
+        <!-- Create Task -->
+        <RouterLink
+          to="/tasks/new"
+          class="link"
+          :class="{ active: $route.name === 'create-task' }"
+        >
+          Create Task
+        </RouterLink>
+
+        <!-- Placeholders (wire these when routes exist) -->
+        <a class="link" href="#">Team Tasks</a>
+        <a class="link" href="#">Users</a>
+        <a class="link" href="#">Create User</a>
+        <a class="link" href="#">My Profile</a>
       </nav>
     </div>
   </header>
 </template>
+
+<script setup>
+// no script needed right now
+</script>
