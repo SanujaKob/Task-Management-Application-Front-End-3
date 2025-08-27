@@ -1,15 +1,20 @@
+<!-- src/App.vue -->
 <template>
   <v-app>
     <div class="shell">
       <Transition name="fade" mode="out-in">
-        <!-- Loading screen only -->
-        <LoadingPage v-if="loading" key="loading" />
+        <!-- Show login immediately (no header/footer/loading) -->
+        <div v-if="isLogin" key="login">
+          <RouterView />
+        </div>
 
-        <!-- App layout after loading -->
+        <!-- Non-login routes: show loading while booting/fetching -->
+        <LoadingPage v-else-if="loading" key="loading" />
+
+        <!-- App layout -->
         <div v-else key="app" class="layout">
           <Header />
           <main class="content">
-            <!-- Render pages here; header/footer always visible -->
             <RouterView />
           </main>
           <Footer />
@@ -20,19 +25,43 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, watch, computed } from 'vue'
+import { useRoute } from 'vue-router'
+import Header from './components/Header.vue'
+import Footer from './components/Footer.vue'
+import LoadingPage from './pages/LoadingPage.vue'
 
-import Header from "./components/Header.vue";
-import Footer from "./components/Footer.vue";
-import LoadingPage from "./pages/LoadingPage.vue";
+const route = useRoute()
 
-const loading = ref(true);
+// How long to show the loading screen (tweak to taste)
+const LOADING_MS = 1000
 
+const loading = ref(false)
+const isLogin = computed(() => route.name === 'login')
+
+function triggerLoading() {
+  loading.value = true
+  setTimeout(() => { loading.value = false }, LOADING_MS)
+}
+
+// Initial mount: if we land on a non-login route, show loading
 onMounted(() => {
-  setTimeout(() => {
-    loading.value = false;
-  }, 1200); // demo delay
-});
+  if (!isLogin.value) triggerLoading()
+})
+
+// On every route change:
+// - If going to /login: ensure loading is off
+// - Else: show loading
+watch(
+  () => route.name,
+  (name) => {
+    if (name === 'login') {
+      loading.value = false
+    } else {
+      triggerLoading()
+    }
+  }
+)
 </script>
 
 <style>
@@ -41,27 +70,11 @@ body {
   margin: 0;
   background: #ffffff;
   color: #000000;
-  /* Use your font (Poppins). If not yet loaded, see step 3. */
   font-family: "Poppins", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
-
-.shell {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Layout after loading */
-.layout {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-.content {
-  flex: 1; /* keep footer stuck to bottom when content is short */
-}
-
-/* Fade transition */
+.shell { min-height: 100vh; display: flex; flex-direction: column; }
+.layout { min-height: 100vh; display: flex; flex-direction: column; }
+.content { flex: 1; }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
