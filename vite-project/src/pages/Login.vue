@@ -6,6 +6,7 @@
 
       <v-card-text>
         <v-form v-model="isValid" validate-on="blur" @submit.prevent="handleLogin">
+          <!-- Email -->
           <v-text-field
             v-model="email"
             label="Email"
@@ -16,6 +17,8 @@
             density="comfortable"
             required
           />
+
+          <!-- Password -->
           <v-text-field
             v-model="password"
             :type="show ? 'text' : 'password'"
@@ -38,9 +41,9 @@
               :disabled="loading"
             />
             <div class="spacer" />
-            <!-- <RouterLink to="/forgot" class="forgot">Forgot password?</RouterLink> -->
           </div>
 
+          <!-- Error -->
           <v-alert
             v-if="errorMsg"
             type="error"
@@ -52,6 +55,7 @@
             {{ errorMsg }}
           </v-alert>
 
+          <!-- Submit -->
           <v-btn
             type="submit"
             color="black"
@@ -74,15 +78,12 @@ import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
-
-// DEV toggle: set to false when your backend is ready
 const USE_MOCK_AUTH = true
 
 const isValid = ref(false)
 const loading = ref(false)
 const show = ref(false)
 const remember = ref(true)
-
 const email = ref('')
 const password = ref('')
 const errorMsg = ref('')
@@ -96,9 +97,7 @@ const rules = {
 async function handleLogin() {
   loading.value = true
   errorMsg.value = ''
-
   try {
-    // ---------- DEV MOCK AUTH ----------
     if (USE_MOCK_AUTH) {
       const ok = email.value.trim() === 'admin@example.com' && password.value === 'password123'
       if (!ok) throw new Error('mock-invalid')
@@ -106,15 +105,13 @@ async function handleLogin() {
       const token = 'mock-token'
       if (remember.value) localStorage.setItem('auth_token', token)
       else sessionStorage.setItem('auth_token', token)
-
-      // optional mock user
       localStorage.setItem('me', JSON.stringify({ email: email.value.trim(), name: 'Admin User' }))
 
       const redirectTo = route.query.redirect || '/'
       router.replace(String(redirectTo))
       return
     }
-    // ---------- REAL API AUTH ----------
+
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -128,7 +125,6 @@ async function handleLogin() {
 
     if (remember.value) localStorage.setItem('auth_token', token)
     else sessionStorage.setItem('auth_token', token)
-
     if (data.user) localStorage.setItem('me', JSON.stringify(data.user))
 
     const redirectTo = route.query.redirect || '/'
@@ -147,12 +143,21 @@ async function handleLogin() {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #fafafa;
+  background: #fafafa;       /* light background */
+  color: #000;               /* black text */
 }
-.auth-card { width: 100%; max-width: 420px; }
-.title { font-weight: 700; }
-.subtitle { opacity: .8; }
-.row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;          /* white card */
+  color: #000;               /* black text */
+  border: 1px solid #ddd;
+}
+
+.title { font-weight: 700; color: #000; }
+.subtitle { opacity: .8; color: #000; }
+.row { display: flex; align-items: center; gap: 8px; margin-top: 4px; color: #000; }
 .spacer { flex: 1; }
-.forgot { font-size: .9rem; opacity: .9; }
+.forgot { font-size: .9rem; opacity: .9; color: #000; }
 </style>

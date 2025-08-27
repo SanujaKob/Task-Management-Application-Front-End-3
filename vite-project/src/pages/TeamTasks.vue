@@ -2,6 +2,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import MyTasksBreakdown from '@/components/MyTasksBreakdown.vue'
+import MyTasksDashboard from '@/components/MyTaskDashboard.vue' // ⬅️ Team overview
 
 /** Toggle to false when backend is ready */
 const USE_MOCK = true
@@ -38,10 +39,9 @@ async function fetchAllTasks() {
   const set = new Set(tasks.value.map(t => t.assignee).filter(Boolean))
   assigneeOptions.value = Array.from(set).sort()
 }
-
 onMounted(fetchAllTasks)
 
-/** Filtered list */
+/** Filtered list (used by panels) */
 const filteredTasks = computed(() => {
   let arr = tasks.value.slice()
 
@@ -70,7 +70,7 @@ function clearFilters() {
   assigneeFilter.value = null
 }
 
-// ---- Status update (from child) ----
+/* ---- Status update (from child) ---- */
 async function onUpdateStatus({ id, newStatus }) {
   const idx = tasks.value.findIndex(t => t.id === id)
   const prev = idx !== -1 ? { ...tasks.value[idx] } : null
@@ -94,7 +94,7 @@ async function onUpdateStatus({ id, newStatus }) {
   }
 }
 
-// ---- Edit ----
+/* ---- Edit ---- */
 const editOpen = ref(false)
 const draft = ref(null)
 const priorityOptions = ['Low','Medium','High']
@@ -125,7 +125,7 @@ async function saveEdit() {
   }
 }
 
-// ---- Delete ----
+/* ---- Delete ---- */
 async function onDelete(task) {
   const ok = window.confirm(`Delete task ${task.id}?`)
   if (!ok) return
@@ -146,6 +146,14 @@ async function onDelete(task) {
     <main class="hero">
       <h1>Team Tasks</h1>
       <p>View and manage all tasks in the system.</p>
+
+      <!-- Team dashboard (overview for ALL tasks) -->
+      <section class="home">
+        <!-- If your dashboard accepts a tasks prop, pass the full set -->
+        <MyTasksDashboard :tasks="tasks" />
+        <!-- If your dashboard fetches by itself, you can remove :tasks -->
+        <!-- <MyTasksDashboard /> -->
+      </section>
 
       <!-- Filters toolbar -->
       <section class="toolbar">

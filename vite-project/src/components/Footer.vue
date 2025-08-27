@@ -13,7 +13,7 @@
   padding: 1%;
   text-align: center;
   background: #363434;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid #ffffff;
   font-size: 14px;
   color: #ffffff;
 }
