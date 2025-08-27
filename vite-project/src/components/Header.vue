@@ -37,15 +37,18 @@ const router = useRouter()
 async function logout() {
   try {
     // Optional: await fetch('/api/logout', { method: 'POST' })
-    localStorage.removeItem('auth_token')
-    sessionStorage.clear()
 
-    // If you DON'T have a 'login' route yet, send to 'home'
-    await router.replace({ name: 'home' })
+    // Clear auth and cached user
+    localStorage.removeItem('auth_token')
+    sessionStorage.removeItem('auth_token')
+    localStorage.removeItem('me')
+
+    // Go to sign-in page
+    await router.replace({ name: 'login' })
   } catch (e) {
     console.error('Logout navigation failed', e)
-    // hard fallback
-    window.location.href = '/'
+    // Hard fallback
+    window.location.href = '/login'
   }
 }
 </script>
