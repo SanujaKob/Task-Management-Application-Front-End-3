@@ -6,13 +6,12 @@
 
       <v-card-text>
         <v-form v-model="isValid" validate-on="blur" @submit.prevent="handleLogin">
-          <!-- Email -->
+          <!-- Username or Email -->
           <v-text-field
-            v-model="email"
-            label="Email"
-            type="email"
-            autocomplete="email"
-            :rules="[rules.required, rules.email]"
+            v-model="usernameOrEmail"
+            label="Username or email"
+            autocomplete="username"
+            :rules="[rules.required]"
             :disabled="loading"
             density="comfortable"
             required
@@ -43,7 +42,6 @@
             <div class="spacer" />
           </div>
 
-          <!-- Error -->
           <v-alert
             v-if="errorMsg"
             type="error"
@@ -55,7 +53,6 @@
             {{ errorMsg }}
           </v-alert>
 
-          <!-- Submit -->
           <v-btn
             type="submit"
             color="black"
@@ -75,62 +72,45 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { login, fetchMe } from '@/services/api' // ← adjust path if needed
 
 const router = useRouter()
 const route = useRoute()
-const USE_MOCK_AUTH = true
 
 const isValid = ref(false)
 const loading = ref(false)
 const show = ref(false)
 const remember = ref(true)
-const email = ref('')
+const usernameOrEmail = ref('')
 const password = ref('')
 const errorMsg = ref('')
 
 const rules = {
   required: v => (!!v || v === 0) || 'This field is required',
-  email: v => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || 'Enter a valid email',
-  min: (n) => v => !v || String(v).length >= n || `Minimum ${n} characters`,
+  min: n => v => !v || String(v).length >= n || `Minimum ${n} characters`,
 }
 
 async function handleLogin() {
   loading.value = true
   errorMsg.value = ''
   try {
-    if (USE_MOCK_AUTH) {
-      const ok = email.value.trim() === 'admin@example.com' && password.value === 'password123'
-      if (!ok) throw new Error('mock-invalid')
+    // Calls POST /api/auth/login with x-www-form-urlencoded { username, password }
+    const { access_token } = await login(
+      usernameOrEmail.value.trim(),
+      password.value,
+      { remember: remember.value },
+    )
 
-      const token = 'mock-token'
-      if (remember.value) localStorage.setItem('auth_token', token)
-      else sessionStorage.setItem('auth_token', token)
-      localStorage.setItem('me', JSON.stringify({ email: email.value.trim(), name: 'Admin User' }))
-
-      const redirectTo = route.query.redirect || '/'
-      router.replace(String(redirectTo))
-      return
-    }
-
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ email: email.value.trim(), password: password.value }),
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-    const data = await res.json()
-    const token = data.access_token || data.token || ''
-    if (!token) throw new Error('No token in response')
-
-    if (remember.value) localStorage.setItem('auth_token', token)
-    else sessionStorage.setItem('auth_token', token)
-    if (data.user) localStorage.setItem('me', JSON.stringify(data.user))
+    // Optional: fetch profile if you exposed /api/me
+    try {
+      const me = await fetchMe()
+      localStorage.setItem('me', JSON.stringify(me))
+    } catch { /* no-op */ }
 
     const redirectTo = route.query.redirect || '/'
     router.replace(String(redirectTo))
   } catch (e) {
-    errorMsg.value = 'Invalid email or password.'
+    errorMsg.value = e?.message || 'Invalid credentials'
   } finally {
     loading.value = false
   }
@@ -143,18 +123,16 @@ async function handleLogin() {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #fafafa;       /* light background */
-  color: #000;               /* black text */
+  background: #fafafa;
+  color: #000;
 }
-
 .auth-card {
   width: 100%;
   max-width: 420px;
-  background: #fff;          /* white card */
-  color: #000;               /* black text */
+  background: #fff;
+  color: #000;
   border: 1px solid #ddd;
 }
-
 .title { font-weight: 700; color: #000; }
 .subtitle { opacity: .8; color: #000; }
 .row { display: flex; align-items: center; gap: 8px; margin-top: 4px; color: #000; }
