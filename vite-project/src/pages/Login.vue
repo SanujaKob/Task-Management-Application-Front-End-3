@@ -72,7 +72,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { login, fetchMe } from '@/services/api' // ← adjust path if needed
+import { login, fetchMe } from '@/services/api' // ← adjust path if needed only
 
 const router = useRouter()
 const route = useRoute()
