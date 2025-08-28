@@ -1,26 +1,28 @@
 <!-- src/App.vue -->
 <template>
   <v-app>
-    <div class="shell">
-      <Transition name="fade" mode="out-in">
-        <!-- Show login immediately (no header/footer/loading) -->
-        <div v-if="isLogin" key="login">
-          <RouterView />
-        </div>
-
-        <!-- Non-login routes: show loading while booting/fetching -->
-        <LoadingPage v-else-if="loading" key="loading" />
-
-        <!-- App layout -->
-        <div v-else key="app" class="layout">
-          <Header />
-          <main class="content">
+    <v-main> <!-- ✅ add this wrapper for Vuetify layout -->
+      <div class="shell">
+        <Transition name="fade" mode="out-in">
+          <!-- Show login immediately (no header/footer/loading) -->
+          <div v-if="isLogin" key="login">
             <RouterView />
-          </main>
-          <Footer />
-        </div>
-      </Transition>
-    </div>
+          </div>
+
+          <!-- Non-login routes: show loading while booting/fetching -->
+          <LoadingPage v-else-if="loading" key="loading" />
+
+          <!-- App layout -->
+          <div v-else key="app" class="layout">
+            <Header />
+            <main class="content">
+              <RouterView />
+            </main>
+            <Footer />
+          </div>
+        </Transition>
+      </div>
+    </v-main>
   </v-app>
 </template>
 
@@ -32,8 +34,6 @@ import Footer from './components/Footer.vue'
 import LoadingPage from './pages/LoadingPage.vue'
 
 const route = useRoute()
-
-// How long to show the loading screen (tweak to taste)
 const LOADING_MS = 1000
 
 const loading = ref(false)
@@ -44,14 +44,10 @@ function triggerLoading() {
   setTimeout(() => { loading.value = false }, LOADING_MS)
 }
 
-// Initial mount: if we land on a non-login route, show loading
 onMounted(() => {
   if (!isLogin.value) triggerLoading()
 })
 
-// On every route change:
-// - If going to /login: ensure loading is off
-// - Else: show loading
 watch(
   () => route.name,
   (name) => {
