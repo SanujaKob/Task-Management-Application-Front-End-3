@@ -1,4 +1,4 @@
-<!-- StatusPanels.vue -->
+<!-- src/components/MyTasksBreakdown.vue -->
 <template>
   <div class="mt-4">
     <v-expansion-panels v-model="openStatusPanels" multiple>
@@ -13,7 +13,10 @@
           </div>
 
           <v-expansion-panels v-else accordion class="border rounded-lg">
-            <v-expansion-panel v-for="t in grouped[status]" :key="t.id">
+            <v-expansion-panel
+              v-for="t in grouped[status]"
+              :key="t.id + '-' + (localStatus[t.id] ?? t.status)"
+            >
               <!-- Row (collapsed view) -->
               <v-expansion-panel-title>
                 <div class="flex items-center justify-between gap-3 w-full">
@@ -53,14 +56,14 @@
                   <div class="grid gap-3 sm:grid-cols-2 text-sm">
                     <div><span class="font-medium">Task ID:</span> {{ t.id }}</div>
                     <div><span class="font-medium">Status:</span> {{ localStatus[t.id] ?? normalizeStatus(t.status) }}</div>
-                    <div><span class="font-medium">Assignee:</span> {{ t.assignee || '—' }}</div>
-                    <div><span class="font-medium">Created By:</span> {{ t.created_by || '—' }}</div>
+                    <div><span class="font-medium">Assignee:</span> {{ displayUser(t.assignee_id ?? t.assignee) }}</div>
+                    <div><span class="font-medium">Created By:</span> {{ displayUser(t.created_by) }}</div>
                     <div><span class="font-medium">Created At:</span> {{ formatDateTime(t.created_at) }}</div>
                     <div><span class="font-medium">Updated At:</span> {{ formatDateTime(t.updated_at) }}</div>
                     <div><span class="font-medium">Due Date:</span> {{ formatDate(t.due_date) }}</div>
                   </div>
 
-                  <!-- Editable status + Save/Reset (manual move between panels) -->
+                  <!-- Editable status + Save/Reset -->
                   <div class="grid gap-3 sm:grid-cols-3 items-end">
                     <v-select
                       :items="orderedStatuses"
@@ -68,7 +71,6 @@
                       variant="outlined"
                       density="comfortable"
                       v-model="localStatus[t.id]"
-                      :model-value="localStatus[t.id]"
                       :hint="`Current: ${normalizeStatus(t.status)}`"
                       persistent-hint
                     />
@@ -92,7 +94,7 @@
                     </div>
                   </div>
 
-                  <!-- Actions (Open removed by request) -->
+                  <!-- Actions -->
                   <div class="flex gap-2 pt-2">
                     <v-btn size="small" variant="text" @click="emit('edit', t)">Edit</v-btn>
                     <v-btn size="small" variant="text" color="error" @click="emit('delete', t)">Delete</v-btn>
@@ -108,111 +110,126 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch } from "vue";
 
 const props = defineProps({
   tasks: { type: Array, default: () => [] },
-  currentUser: { type: String, default: '' }
-})
-const emit = defineEmits(['edit', 'delete', 'update-status'])
+  currentUser: { type: String, default: "" },
+  currentUserId: { type: [String, Number], default: null },
+  users: { type: Array, default: () => [] }, // [{id,label}]
+});
+const emit = defineEmits(["edit", "delete", "update-status"]);
 
 const orderedStatuses = [
-  'To Do',
-  'In Progress',
-  'Completed',
-  'Approved',
-  'Rejected',
-  'Re-Submission',
-]
+  "To Do",
+  "In Progress",
+  "Completed",
+  "Approved",
+  "Rejected",
+  "Re-Submission",
+];
 
-/** start closed (prevents stray "0") */
-const openStatusPanels = ref([])
+const openStatusPanels = ref([]); // start closed
+const localStatus = ref({});
 
-/** Local editable map of taskId -> status */
-const localStatus = ref({})
-
-/** sync local status with tasks input */
+/* keep localStatus synced */
 watch(
   () => props.tasks,
-  list => {
-    const map = {}
-    for (const t of list) map[t.id] = normalizeStatus(t.status)
-    localStatus.value = map
+  (list) => {
+    const m = {};
+    for (const t of list) m[t.id] = normalizeStatus(t.status);
+    localStatus.value = m;
   },
   { immediate: true, deep: true }
-)
+);
 
+/* filter “mine” (prefer id, fall back to name) */
+const norm = (v) => String(v ?? "").trim().toLowerCase();
+function matchesUser(field) {
+  const v = norm(field);
+  if (props.currentUserId != null && v === norm(props.currentUserId)) return true;
+  if (props.currentUser && v === norm(props.currentUser)) return true;
+  return false;
+}
 const mine = computed(() => {
-  if (!props.currentUser) return props.tasks
-  return props.tasks.filter(t =>
-    (t.created_by && t.created_by === props.currentUser) ||
-    (t.assignee && t.assignee === props.currentUser)
-  )
-})
+  if (props.currentUserId != null || props.currentUser) {
+    const filtered = props.tasks.filter(
+      (t) => matchesUser(t.assignee_id ?? t.assignee) || matchesUser(t.created_by)
+    );
+    return filtered.length ? filtered : props.tasks;
+  }
+  return props.tasks;
+});
 
+/* grouping uses EFFECTIVE status (local if changed) */
 const grouped = computed(() => {
-  const buckets = Object.fromEntries(orderedStatuses.map(s => [s, []]))
+  const buckets = Object.fromEntries(orderedStatuses.map((s) => [s, []]));
   for (const t of mine.value) {
-    const s = normalizeStatus(t.status)
-    if (!buckets[s]) buckets[s] = []
-    buckets[s].push(t)
+    const effective = localStatus.value[t.id] ?? t.status;
+    const s = normalizeStatus(effective);
+    (buckets[s] ||= []).push(t);
   }
   for (const k of Object.keys(buckets)) {
     buckets[k].sort((a, b) => {
-      const ad = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY
-      const bd = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY
-      if (ad !== bd) return ad - bd
-      return (a.title || '').localeCompare(b.title || '')
-    })
+      const ad = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+      const bd = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+      if (ad !== bd) return ad - bd;
+      return (a.title || "").localeCompare(b.title || "");
+    });
   }
-  return buckets
-})
+  return buckets;
+});
 
+/* actions */
 function isDirty(t) {
-  return (localStatus.value[t.id] ?? normalizeStatus(t.status)) !== normalizeStatus(t.status)
+  return (localStatus.value[t.id] ?? normalizeStatus(t.status)) !== normalizeStatus(t.status);
 }
-
 function saveStatus(t) {
-  const newStatus = localStatus.value[t.id]
-  emit('update-status', { id: t.id, newStatus })
+  const newStatus = localStatus.value[t.id];
+  emit("update-status", { id: t.id, newStatus });
 }
-
 function resetStatus(t) {
-  localStatus.value[t.id] = normalizeStatus(t.status)
+  localStatus.value[t.id] = normalizeStatus(t.status);
 }
 
-/** utils */
+/* utils */
 function normalizeStatus(s) {
-  if (!s) return 'To Do'
-  const x = s.toString().toLowerCase().trim()
-  if (x.includes('re-sub') || x.includes('resub')) return 'Re-Submission'
-  if (x.includes('reject')) return 'Rejected'
-  if (x.includes('approve')) return 'Approved'
-  if (x.includes('complete') || x === 'done') return 'Completed'
-  if (x.includes('progress') || x === 'doing') return 'In Progress'  // <-- fixed (removed extra ')')
-  return 'To Do'
+  if (!s) return "To Do";
+  const x = s.toString().toLowerCase().trim();
+  if (x.includes("re-sub") || x.includes("resub")) return "Re-Submission";
+  if (x.includes("reject")) return "Rejected";
+  if (x.includes("approve")) return "Approved";
+  if (x.includes("complete") || x === "done") return "Completed";
+  if (x.includes("progress") || x === "doing") return "In Progress";
+  return "To Do";
+}
+function displayUser(u) {
+  if (u == null) return "—";
+  const id = typeof u === "object" ? (u.id ?? u.user_id ?? u.username ?? u.email ?? u.full_name) : u;
+  const pretty = props.users.find((x) => String(x.id) === String(id))?.label;
+  return pretty ?? String(id);
 }
 function formatDate(value) {
-  if (!value) return '—'
-  const d = new Date(value)
-  if (isNaN(d)) return '—'
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })
+  if (!value) return "—";
+  const d = new Date(value);
+  if (isNaN(d)) return "—";
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
 function formatDateTime(value) {
-  if (!value) return '—'
-  const d = new Date(value)
-  if (isNaN(d)) return '—'
+  if (!value) return "—";
+  const d = new Date(value);
+  if (isNaN(d)) return "—";
   return d.toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  })
+    year: "numeric", month: "short", day: "2-digit",
+    hour: "2-digit", minute: "2-digit"
+  });
 }
 function priorityColor(p) {
-  const v = (p || '').toString().toLowerCase()
-  if (v === 'high') return 'error'
-  if (v === 'medium') return 'warning'
-  if (v === 'low') return 'success'
-  return undefined
+  const v = (p || "").toString().toLowerCase();
+  if (v === "high") return "error";
+  if (v === "medium") return "warning";
+  if (v === "low") return "success";
+  return undefined;
 }
 </script>
 
@@ -231,4 +248,10 @@ function priorityColor(p) {
 .rounded-lg { border-radius: .5rem; }
 .opacity-70 { opacity: .7; }
 .py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+
+.grid { display: grid; }
+.sm\:grid-cols-2 { grid-template-columns: 1fr; }
+@media (min-width: 640px) {
+  .sm\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+}
 </style>

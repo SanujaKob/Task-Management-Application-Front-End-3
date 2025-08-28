@@ -1,172 +1,181 @@
 <!-- src/pages/MyTasksPage.vue -->
 <script setup>
-import { ref, onMounted } from 'vue'
-import MyTaskDashboard from '@/components/MyTaskDashboard.vue'
-import MyTasksBreakdown from '@/components/MyTasksBreakdown.vue'
+import { ref, onMounted } from "vue";
+import MyTaskDashboard from "@/components/MyTaskDashboard.vue";
+import MyTasksBreakdown from "@/components/MyTasksBreakdown.vue";
 
-/** Toggle to false when backend is ready */
-const USE_MOCK = true
+// Use your resilient service
+import {
+  updateTask as apiUpdateTask,
+  deleteTask as apiDeleteTask,
+  listMyTasks,
+  listTasks,
+  listAssignees,
+} from "@/services/tasks";
 
-const tasks = ref([])
-const currentUser = 'Sanuja' // replace with your auth store value
+/** Flip this to "assignee" if your backend expects that key */
+const ASSIGNEE_KEY = "assignee_id";
 
-// ---- Mock data (for local dev) ----
-const mockTasks = [
-  {
-    id: 'T-101',
-    title: 'Set up user authentication',
-    description: 'Implement JWT login and role-based access control.',
-    status: 'To Do',
-    priority: 'High',
-    due_date: '2025-09-05',
-    percent_complete: 0,
-    assignee: 'Sanuja',
-    created_by: 'Jane',
-    created_at: '2025-08-25T09:30:00Z',
-    updated_at: '2025-08-25T09:30:00Z'
-  },
-  {
-    id: 'T-102',
-    title: 'Design database schema',
-    description: 'ERD for users, tasks, and notifications.',
-    status: 'In Progress',
-    priority: 'Medium',
-    due_date: '2025-09-10',
-    percent_complete: 45,
-    assignee: 'Ashen',
-    created_by: 'Sanuja',
-    created_at: '2025-08-24T12:00:00Z',
-    updated_at: '2025-08-27T14:15:00Z'
-  },
-  {
-    id: 'T-103',
-    title: 'Create landing page UI',
-    description: 'Homepage with header, footer, and hero section.',
-    status: 'Completed',
-    priority: 'Low',
-    due_date: '2025-08-20',
-    percent_complete: 100,
-    assignee: 'Sanuja',
-    created_by: 'Sanuja',
-    created_at: '2025-08-15T10:00:00Z',
-    updated_at: '2025-08-22T16:45:00Z'
-  },
-  {
-    id: 'T-104',
-    title: 'Client feedback review',
-    description: 'Review design feedback and prepare fixes.',
-    status: 'Approved',
-    priority: 'Medium',
-    due_date: '2025-09-01',
-    percent_complete: 100,
-    assignee: 'Jane',
-    created_by: 'Sanuja',
-    created_at: '2025-08-18T08:20:00Z',
-    updated_at: '2025-08-25T18:30:00Z'
-  },
-  {
-    id: 'T-105',
-    title: 'Fix login bug',
-    description: 'Resolve invalid token issue after refresh.',
-    status: 'Rejected',
-    priority: 'High',
-    due_date: '2025-08-28',
-    percent_complete: 10,
-    assignee: 'Sanuja',
-    created_by: 'Ashen',
-    created_at: '2025-08-26T11:00:00Z',
-    updated_at: '2025-08-27T15:00:00Z'
-  }
-]
+/* state */
+const tasks = ref([]);
+const loading = ref(false);
+const error = ref("");
 
-// ---- Load tasks ----
-async function fetchTasks() {
-  if (USE_MOCK) {
-    tasks.value = mockTasks
-    return
-  }
-  const res = await fetch('/api/tasks/my', { headers: { Accept: 'application/json' } })
-  if (!res.ok) throw new Error('Failed to fetch tasks')
-  tasks.value = await res.json()
+/* current user */
+const currentUser = localStorage.getItem("full_name") || "Sanuja";
+const currentUserId = localStorage.getItem("user_id") || "";
+
+/* options */
+const statusOptions = ["To Do","In Progress","Completed","Approved","Rejected","Re-Submission"];
+const priorityOptions = ["Low","Medium","High"];
+
+/* users (optional) */
+const users = ref([]);
+const usersLoading = ref(false);
+
+/* edit dialog */
+const editOpen = ref(false);
+const draft = ref(null);
+const editErr = ref("");
+
+/* helpers */
+function mapTask(raw) {
+  const assignee_id = raw.assignee_id ?? raw.assignee ?? null;
+  return {
+    id: raw.id ?? raw._id,
+    title: raw.title ?? "",
+    description: raw.description ?? "",
+    status: raw.status ?? "To Do",
+    priority: raw.priority ?? "Medium",
+    due_date: raw.due_date ?? raw.dueDate ?? null,
+    percent_complete: raw.percent_complete ?? raw.progress ?? 0,
+    assignee_id,
+    assignee: assignee_id,
+    created_by: raw.created_by ?? raw.created_by_id ?? null,
+    created_at: raw.created_at ?? raw.createdAt ?? null,
+    updated_at: raw.updated_at ?? raw.updatedAt ?? null,
+  };
 }
-onMounted(fetchTasks)
 
-// ---- Status update (from child) ----
-async function onUpdateStatus({ id, newStatus }) {
-  const idx = tasks.value.findIndex(t => t.id === id)
-  const prev = idx !== -1 ? { ...tasks.value[idx] } : null
+/* loads */
+async function fetchTasks() {
+  loading.value = true; error.value = "";
+  try {
+    let data = [];
+    try {
+      data = await listMyTasks();
+    } catch {
+      // fallback: list all and client-filter
+      data = await listTasks();
+    }
+    let list = (Array.isArray(data) ? data : []).map(mapTask);
 
-  if (idx !== -1) {
-    tasks.value[idx] = { ...tasks.value[idx], status: newStatus, updated_at: new Date().toISOString() }
+    if (currentUserId) {
+      const me = String(currentUserId).toLowerCase();
+      const filtered = list.filter(
+        (t) =>
+          String(t.assignee_id ?? "").toLowerCase() === me ||
+          String(t.created_by ?? "").toLowerCase() === me
+      );
+      if (filtered.length) list = filtered;
+    }
+    tasks.value = list;
+  } catch (e) {
+    error.value = e?.message || "Failed to fetch tasks";
+  } finally {
+    loading.value = false;
   }
+}
+
+async function fetchUsers() {
+  usersLoading.value = true;
+  try {
+    const data = await listAssignees();
+    const arr = Array.isArray(data) ? data : [];
+    users.value = arr.map((u) => ({
+      id: u.id ?? u._id ?? u.username ?? u.email,
+      label: u.full_name || u.username || u.email || String(u.id),
+    }));
+  } catch {
+    users.value = [];
+  } finally {
+    usersLoading.value = false;
+  }
+}
+
+/* interactions */
+async function onUpdateStatus({ id, newStatus }) {
+  // optimistic immutable update -> triggers regrouping
+  const prevTasks = tasks.value;
+  const nextTasks = prevTasks.map((t) =>
+    t.id === id ? { ...t, status: newStatus, updated_at: new Date().toISOString() } : t
+  );
+  tasks.value = nextTasks;
 
   try {
-    if (!USE_MOCK) {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      })
-      if (!res.ok) throw new Error('Status update failed')
-    }
+    await apiUpdateTask(id, { status: newStatus });
   } catch (e) {
-    console.error(e)
-    if (idx !== -1 && prev) tasks.value[idx] = prev // revert
-    // TODO: show snackbar
+    tasks.value = prevTasks; // revert
+    console.error("Update status failed:", e?.message || e);
   }
 }
 
-// ---- Full edit dialog (all fields) ----
-const editOpen = ref(false)
-const draft = ref(null)
-const statusOptions = ['To Do','In Progress','Completed','Approved','Rejected','Re-Submission']
-const priorityOptions = ['Low','Medium','High']
-
 function onEdit(task) {
-  // clone to avoid mutating until save
-  draft.value = { ...task }
-  editOpen.value = true
+  editErr.value = "";
+  draft.value = {
+    ...task,
+    assignee_id: task.assignee_id ?? task.assignee ?? null,
+    percent_complete: Number.isFinite(task.percent_complete) ? task.percent_complete : 0,
+  };
+  editOpen.value = true;
 }
 
 async function saveEdit() {
-  if (!draft.value) return
-  const payload = { ...draft.value }
+  if (!draft.value) return;
+  editErr.value = "";
+
+  const id = draft.value.id;
+  const payload = {
+    title: draft.value.title?.trim() || "",
+    description: draft.value.description ?? "",
+    status: draft.value.status,
+    priority: draft.value.priority,
+    percent_complete: Math.max(0, Math.min(100, Number(draft.value.percent_complete ?? 0))),
+    due_date: draft.value.due_date || null,
+    [ASSIGNEE_KEY]: draft.value.assignee_id ?? null,
+  };
+
+  // optimistic immutable update
+  const prevTasks = tasks.value;
+  tasks.value = prevTasks.map((t) =>
+    t.id === id ? { ...t, ...payload, assignee_id: payload[ASSIGNEE_KEY], updated_at: new Date().toISOString() } : t
+  );
 
   try {
-    if (!USE_MOCK) {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(payload.id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      if (!res.ok) throw new Error('Update failed')
-    }
-    // update local
-    const i = tasks.value.findIndex(t => t.id === payload.id)
-    if (i !== -1) tasks.value[i] = { ...payload, updated_at: new Date().toISOString() }
-    editOpen.value = false
+    await apiUpdateTask(id, payload);
+    editOpen.value = false;
   } catch (e) {
-    console.error(e)
-    // TODO: snackbar
+    tasks.value = prevTasks; // revert
+    editErr.value = e?.message || "Update failed";
   }
 }
 
-// ---- Delete ----
 async function onDelete(task) {
-  const confirm = window.confirm(`Delete task ${task.id}?`)
-  if (!confirm) return
-
+  const ok = window.confirm(`Delete task ${task.id}?`);
+  if (!ok) return;
   try {
-    if (!USE_MOCK) {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(task.id)}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Delete failed')
-    }
-    tasks.value = tasks.value.filter(t => t.id !== task.id)
+    await apiDeleteTask(task.id);
+    tasks.value = tasks.value.filter((t) => t.id !== task.id);
   } catch (e) {
-    console.error(e)
-    // TODO: snackbar
+    console.error("Delete failed:", e?.message || e);
   }
 }
+
+/* init */
+onMounted(async () => {
+  await fetchTasks();
+  fetchUsers(); // optional
+});
 </script>
 
 <template>
@@ -175,16 +184,19 @@ async function onDelete(task) {
       <h1>Stay on top of your tasks</h1>
       <p>Simple, fast task management - create tasks, track progress, and hit deadlines.</p>
 
-      <!-- Dashboard -->
+      <div v-if="loading" class="status">Loading your tasks…</div>
+      <div v-else-if="error" class="status error">{{ error }}</div>
+
       <section class="home">
-        <MyTaskDashboard :disableFetch="USE_MOCK" />
+        <MyTaskDashboard :tasks="tasks" />
       </section>
 
-      <!-- Breakdown panels -->
       <section class="home">
         <MyTasksBreakdown
           :tasks="tasks"
           :currentUser="currentUser"
+          :currentUserId="currentUserId"
+          :users="users"
           @update-status="onUpdateStatus"
           @edit="onEdit"
           @delete="onDelete"
@@ -192,26 +204,50 @@ async function onDelete(task) {
       </section>
     </main>
 
-    <!-- Edit dialog (all fields) -->
+    <!-- Edit dialog (unchanged layout) -->
     <v-dialog v-model="editOpen" max-width="720">
       <v-card>
         <v-card-title>Edit Task</v-card-title>
+
         <v-card-text v-if="draft" class="grid gap-3">
+          <v-alert v-if="editErr" type="error" density="comfortable" variant="tonal">
+            {{ editErr }}
+          </v-alert>
+
           <v-text-field v-model="draft.title" label="Title" />
           <v-textarea v-model="draft.description" label="Description" auto-grow />
+
           <div class="grid md:grid-cols-2 gap-3">
             <v-select :items="statusOptions" v-model="draft.status" label="Status" />
             <v-select :items="priorityOptions" v-model="draft.priority" label="Priority" />
           </div>
+
           <div class="grid md:grid-cols-2 gap-3">
-            <v-text-field v-model="draft.assignee" label="Assignee" />
-            <v-text-field v-model="draft.created_by" label="Created By" />
+            <template v-if="users.length">
+              <v-autocomplete
+                v-model="draft.assignee_id"
+                :items="users"
+                item-title="label"
+                item-value="id"
+                :loading="usersLoading"
+                label="Assignee"
+                :return-object="false"
+                clearable
+              />
+            </template>
+            <template v-else>
+              <v-text-field v-model="draft.assignee_id" label="Assignee" />
+            </template>
+
+            <v-text-field :model-value="draft.created_by ?? '—'" label="Created By" readonly />
           </div>
+
           <div class="grid md:grid-cols-2 gap-3">
             <v-text-field v-model.number="draft.percent_complete" label="Percent Complete" type="number" min="0" max="100" />
             <v-text-field v-model="draft.due_date" label="Due Date" type="date" />
           </div>
         </v-card-text>
+
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="editOpen = false">Cancel</v-btn>
@@ -234,30 +270,13 @@ async function onDelete(task) {
   overflow-y: auto;
   font-family: "Poppins", system-ui, sans-serif;
 }
-.hero {
-  max-width: 960px;
-  margin: 40px auto;
-  padding: 0 16px;
-  text-align: center;
-}
-.hero h1 {
-  font-size: clamp(24px, 4vw, 32px);
-  margin-bottom: 10px;
-}
-.hero p {
-  color: #111;
-  margin: 0 auto 20px;
-  max-width: 600px;
-}
-.home {
-  margin-top: 24px;
-  text-align: left;
-}
-
-/* Minimal utility grid classes (Vuetify coexists fine with these) */
+.hero { max-width: 960px; margin: 40px auto; padding: 0 16px; text-align: center; }
+.hero h1 { font-size: clamp(24px, 4vw, 32px); margin-bottom: 10px; }
+.hero p { color: #111; margin: 0 auto 12px; max-width: 600px; }
+.status { margin: 8px 0 0; font-size: 14px; }
+.status.error { color: #b91c1c; }
+.home { margin-top: 24px; text-align: left; }
 .grid { display: grid; gap: 12px; }
 .md\:grid-cols-2 { grid-template-columns: 1fr; }
-@media (min-width: 768px) {
-  .md\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-}
+@media (min-width: 768px) { .md\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); } }
 </style>
