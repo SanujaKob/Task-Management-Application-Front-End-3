@@ -1,4 +1,4 @@
-<!-- src/pages/UsersList.vue -->
+<!-- src/pages/UsersList.vue ------->
 <template>
   <div class="page">
     <main class="hero">
