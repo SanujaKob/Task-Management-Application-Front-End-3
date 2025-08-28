@@ -4,9 +4,9 @@
     <main class="hero">
       <h1>Create a New Task</h1>
       <p>Organize your work by creating a Task.</p>
-      <br></br>
+      <br />
 
-      <v-form v-model="isValid" @submit.prevent="handleSubmit" validate-on="blur">
+      <v-form ref="formRef" v-model="isValid" @submit.prevent="handleSubmit" validate-on="blur">
         <div class="grid">
           <v-text-field
             v-model="form.title"
@@ -64,9 +64,8 @@
         />
 
         <div class="actions">
-          <v-btn type="submit" color="black" variant="flat" :disabled="submitting || !isValid">
-            <template v-if="!submitting">Create Task</template>
-            <template v-else>Saving…</template>
+          <v-btn type="submit" color="black" variant="flat" :loading="submitting" :disabled="submitting">
+            Create Task
           </v-btn>
           <v-btn variant="outlined" @click="resetForm" :disabled="submitting">Reset</v-btn>
         </div>
@@ -89,6 +88,11 @@
 <script setup>
 import { reactive, ref } from 'vue'
 
+/** If you set VITE_API_URL in your .env, it will be used. Otherwise it falls back to relative path (works if you use a Vite proxy). */
+const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
+const TASKS_URL = `${API_BASE}/api/tasks`   // -> http://127.0.0.1:8000/api/tasks
+
+const formRef = ref(null)
 const isValid = ref(false)
 const submitting = ref(false)
 
@@ -109,7 +113,6 @@ const rules = {
   required: v => (!!v || v === 0) || 'This field is required',
   min2: v => (v && v.length >= 2) || 'Must be at least 2 characters',
   afterStart: () => {
-    // Valid if either empty (other rule handles required) or due >= start
     if (!form.start_date || !form.due_date) return true
     return form.due_date >= form.start_date || 'Due Date must be on/after Start Date'
   },
@@ -126,36 +129,62 @@ function resetForm() {
   form.start_date = ''
   form.due_date = ''
   message.text = ''
+  // Reset Vuetify validation state:
+  formRef.value?.resetValidation?.()
+}
+
+/** Safely convert empty strings to null so FastAPI date fields parse cleanly */
+function normalizePayload(raw) {
+  const payload = { ...raw }
+  for (const k of ['description', 'assignee', 'start_date', 'due_date']) {
+    if (payload[k] === '') payload[k] = null
+  }
+  return payload
 }
 
 async function handleSubmit() {
-  const payload = {
+  // Run Vuetify validation explicitly (more reliable than just v-model)
+  const res = await formRef.value?.validate?.()
+  if (res && res.valid === false) return
+
+  const payload = normalizePayload({
     title: form.title.trim(),
-    description: form.description.trim(),
+    description: form.description?.trim() || '',
     priority: form.priority,
     status: form.status,
-    assignee: form.assignee.trim(),
-    start_date: form.start_date || null,
-    due_date: form.due_date || null,
-  }
+    assignee: form.assignee?.trim() || '',
+    start_date: form.start_date, // keep if your backend accepts it; remove otherwise
+    due_date: form.due_date,
+  })
 
   submitting.value = true
   message.text = ''
   try {
-    // Change to full URL if you’re not using a Vite proxy:
-    // const res = await fetch('http://localhost:8000/api/tasks', { ... })
-    const res = await fetch('/api/tasks', {
+    const resp = await fetch(TASKS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload),
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!resp.ok) {
+      // FastAPI commonly returns JSON with {"detail": "..."} on errors
+      let detail = `HTTP ${resp.status}`
+      try {
+        const j = await resp.json()
+        if (j?.detail) detail = Array.isArray(j.detail)
+          ? j.detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+          : j.detail
+      } catch { /* ignore JSON parse fail */ }
+      throw new Error(detail)
+    }
+    const created = await resp.json()
     resetForm()
     message.type = 'success'
-    message.text = 'Task created successfully.'
+    message.text = `Task created successfully${created?.id ? ` (ID: ${created.id})` : ''}.`
+    // Optionally notify parent list to refresh:
+    // emit('created', created)
   } catch (err) {
     message.type = 'error'
-    message.text = 'Failed to create task. Check your backend or network.'
+    message.text = `Failed to create task. ${err?.message || 'Check your backend or network.'}`
   } finally {
     submitting.value = false
   }
@@ -172,27 +201,19 @@ async function handleSubmit() {
   font-family: "Poppins", system-ui, sans-serif;
 }
 
-/* Center the header + paragraph */
 .hero {
   margin: 40px auto;
   padding: 0 16px;
   text-align: center;
 }
-.hero h1 {
-  font-size: clamp(24px, 4vw, 32px);
-  margin-bottom: 6px;
-}
-.hero p {
-  color: #111;
-  margin: 0 0 20px;
-}
+.hero h1 { font-size: clamp(24px, 4vw, 32px); margin-bottom: 6px; }
+.hero p { color: #111; margin: 0 0 20px; }
 
-/* Two columns on desktop, 1 on mobile */
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 16px;
-  text-align: left; /* keep inputs left-aligned even if header is centered */
+  text-align: left;
 }
 @media (max-width: 700px) {
   .grid { grid-template-columns: 1fr; }
@@ -202,6 +223,6 @@ async function handleSubmit() {
   display: flex;
   gap: 12px;
   margin-top: 16px;
-  justify-content: center; /* center the buttons under the centered header */
+  justify-content: center;
 }
 </style>

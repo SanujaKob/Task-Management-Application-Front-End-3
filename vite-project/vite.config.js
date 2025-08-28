@@ -11,11 +11,20 @@ export default defineConfig({
     },
   },
   server: {
+    // Let Vite read from parent dir (your original setting)
     fs: {
-      // Allow Vite to serve files from the parent directory (where node_modules lives)
-      allow: [
-        path.resolve(__dirname, '..'),
-      ],
+      allow: [path.resolve(__dirname, '..')],
+    },
+    // ✅ Proxy API calls to FastAPI backend
+    proxy: {
+      '/api': {
+        // Use env if set; otherwise default to your local FastAPI
+        target: process.env.VITE_API_URL || 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        secure: false,
+        // No rewrite needed since backend is also mounted at /api
+        // rewrite: (p) => p,
+      },
     },
   },
 })

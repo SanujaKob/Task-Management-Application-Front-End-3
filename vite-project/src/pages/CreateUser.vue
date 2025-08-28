@@ -3,17 +3,25 @@
   <div class="page">
     <main class="hero">
       <h1>Create a New User</h1>
-      <p>Enter the User’s details and save.</p>
-      <br></br>
+      <p>Enter the user’s details and save.</p>
+      <br />
 
       <v-form v-model="isValid" @submit.prevent="handleSubmit" validate-on="blur">
         <div class="grid">
+          <v-text-field
+            v-model="form.username"
+            label="Username"
+            :rules="[rules.required]"
+            required
+          />
+
           <v-text-field
             v-model="form.first_name"
             label="First Name"
             :rules="[rules.required]"
             required
           />
+
           <v-text-field
             v-model="form.last_name"
             label="Last Name"
@@ -30,8 +38,8 @@
           />
 
           <v-select
-            v-model="form.role"
-            :items="roles"
+            v-model="form.roleLabel"
+            :items="roleLabels"
             label="Role"
             :rules="[rules.required]"
             required
@@ -82,13 +90,15 @@ import { reactive, ref } from 'vue'
 const isValid = ref(false)
 const submitting = ref(false)
 
-const roles = ['Admin', 'Manager', 'Employee']
+const roleLabels = ['Admin', 'Manager', 'Employee']           // UI labels
+const roleMap = { Admin: 'admin', Manager: 'manager', Employee: 'employee' } // enum values expected by backend
 
 const form = reactive({
+  username: '',
   first_name: '',
   last_name: '',
   email: '',
-  role: '',
+  roleLabel: '',
   password: '',
   confirm_password: '',
 })
@@ -103,40 +113,52 @@ const rules = {
 const message = reactive({ type: 'success', text: '' })
 
 function resetForm() {
+  form.username = ''
   form.first_name = ''
   form.last_name = ''
   form.email = ''
-  form.role = ''
+  form.roleLabel = ''
   form.password = ''
   form.confirm_password = ''
   message.text = ''
 }
 
 async function handleSubmit() {
+  // Build backend payload:
   const payload = {
-    first_name: form.first_name.trim(),
-    last_name: form.last_name.trim(),
+    username: form.username.trim(),
     email: form.email.trim(),
-    role: form.role,
+    full_name: `${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
+    role: roleMap[form.roleLabel] || '',    // enum value
     password: form.password,
   }
 
   submitting.value = true
   message.text = ''
   try {
-    // If you don't have a Vite proxy, use the full URL (e.g., http://localhost:8000/api/users)
+    // If you don’t use a Vite proxy, replace '/api' with your full base URL (e.g., http://127.0.0.1:8000/api)
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(payload),
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+    if (!res.ok) {
+      // Try to surface FastAPI error messages like "Username already exists"
+      let errText = `HTTP ${res.status}`
+      try {
+        const data = await res.json()
+        if (data?.detail) errText = Array.isArray(data.detail) ? data.detail.map(d => d.msg || d).join(', ') : data.detail
+      } catch {}
+      throw new Error(errText)
+    }
+
     resetForm()
     message.type = 'success'
     message.text = 'User created successfully.'
   } catch (err) {
     message.type = 'error'
-    message.text = 'Failed to create user. Check your backend or network.'
+    message.text = String(err?.message || err || 'Failed to create user. Check your backend or network.')
   } finally {
     submitting.value = false
   }
@@ -155,12 +177,11 @@ async function handleSubmit() {
 .hero {
   margin: 40px auto;
   padding: 0 16px;
-  text-align: center; /* centered header + paragraph */
+  text-align: center;
 }
 .hero h1 { font-size: clamp(24px, 4vw, 32px); margin-bottom: 6px; }
 .hero p  { color: #111; margin: 0 0 20px; }
 
-/* form grid */
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));
