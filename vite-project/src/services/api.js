@@ -91,13 +91,13 @@ export async function login(identifier, password, { remember = true } = {}) {
     return data;
 }
 
-// Optional: if you added a /api/me endpoint (protected) to read current user
+// ---- CURRENT USER ----
 export async function fetchMe() {
-    const res = await apiFetch("/api/me");
+    const res = await apiFetch("/api/users/me"); // <-- updated path
     return handleResponse(res);
 }
 
-// ---- USERS (updated to use apiFetch so token is sent) ----
+// ---- USERS ----
 /** Create a new user */
 export async function createUser(payload) {
     const res = await apiFetch("/api/users", {

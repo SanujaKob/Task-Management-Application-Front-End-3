@@ -9,21 +9,14 @@
       <v-form v-model="isValid" @submit.prevent="handleSave" validate-on="blur">
         <!-- Basic details -->
         <div class="grid">
+          <v-text-field v-model="form.username" label="Username" :readonly="true" />
           <v-text-field
-            v-model="form.first_name"
-            label="First Name"
+            v-model="form.full_name"
+            label="Full name"
             :readonly="!editing"
             :rules="[rules.required]"
             required
           />
-          <v-text-field
-            v-model="form.last_name"
-            label="Last Name"
-            :readonly="!editing"
-            :rules="[rules.required]"
-            required
-          />
-
           <v-text-field
             v-model="form.email"
             label="Email"
@@ -32,18 +25,7 @@
             :rules="[rules.required, rules.email]"
             required
           />
-
-          <v-text-field
-            v-model="form.phone"
-            label="Phone"
-            :readonly="!editing"
-          />
-
-          <v-text-field
-            v-model="form.role"
-            label="Role"
-            :readonly="!editing"
-          />
+          <v-text-field v-model="form.role" label="Role" :readonly="true" />
         </div>
 
         <!-- Password section (only in edit mode) -->
@@ -122,6 +104,10 @@
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { apiFetch, fetchMe } from '@/services/api'  // uses token automatically
+
+const router = useRouter()
 
 const isValid = ref(false)
 const loading = ref(true)
@@ -130,10 +116,10 @@ const editing = ref(false)
 const error = ref('')
 
 const form = reactive({
-  first_name: '',
-  last_name: '',
+  id: '',
+  username: '',
+  full_name: '',
   email: '',
-  phone: '',
   role: '',
   current_password: '',
   new_password: '',
@@ -171,15 +157,30 @@ function cancelEditing() {
   message.text = ''
 }
 
+function readOrThrow(res) {
+  return res.json().catch(() => ({})).then((data) => {
+    if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`)
+    return data
+  })
+}
+
 onMounted(async () => {
   try {
-    const res = await fetch('/api/users/me', { headers: { Accept: 'application/json' } })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    Object.assign(form, data)
-    Object.assign(original, { ...form, current_password: '', new_password: '', confirm_password: '' })
+    // GET /api/users/me
+    const me = await fetchMe()
+    Object.assign(form, {
+      id: me.id,
+      username: me.username,
+      full_name: me.full_name || '',
+      email: me.email || '',
+      role: me.role || 'employee',
+      current_password: '', new_password: '', confirm_password: ''
+    })
+    Object.assign(original, { ...form })
+    localStorage.setItem('me', JSON.stringify(me))
   } catch (e) {
     error.value = 'Failed to load profile.'
+    router.replace('/login?redirect=' + encodeURIComponent('/my-profile'))
   } finally {
     loading.value = false
   }
@@ -193,33 +194,28 @@ async function handleSave() {
   try {
     // 1) Update profile fields
     const profilePayload = {
-      first_name: form.first_name.trim(),
-      last_name: form.last_name.trim(),
+      full_name: form.full_name.trim(),
       email: form.email.trim(),
-      phone: form.phone?.trim?.() || '',
-      role: form.role?.trim?.() || '', // remove if role must not be edited
     }
-    const profileRes = await fetch('/api/users/me', {
+    const profileRes = await apiFetch('/api/users/me', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(profilePayload),
+      body: profilePayload,
     })
-    if (!profileRes.ok) throw new Error(`Profile HTTP ${profileRes.status}`)
-    const updated = await profileRes.json()
-    Object.assign(form, updated)
+    const updated = await readOrThrow(profileRes)
+    Object.assign(form, { ...form, full_name: updated.full_name, email: updated.email })
     Object.assign(original, { ...form, current_password: '', new_password: '', confirm_password: '' })
+    localStorage.setItem('me', JSON.stringify(updated))
 
     // 2) Change password if requested
     if (form.new_password) {
-      const pwRes = await fetch('/api/users/me/password', {
+      const pwRes = await apiFetch('/api/users/me/password', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({
+        body: {
           current_password: form.current_password,
           new_password: form.new_password,
-        }),
+        },
       })
-      if (!pwRes.ok) throw new Error(`Password HTTP ${pwRes.status}`)
+      await readOrThrow(pwRes)
     }
 
     // clear password fields
@@ -232,7 +228,7 @@ async function handleSave() {
     message.text = 'Profile updated.'
   } catch (e) {
     message.type = 'error'
-    message.text = 'Failed to save. Check your inputs and try again.'
+    message.text = 'Failed to save. ' + (e?.message || '')
   } finally {
     saving.value = false
   }
