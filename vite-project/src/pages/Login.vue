@@ -5,7 +5,12 @@
       <v-card-subtitle class="subtitle">Sign in to continue</v-card-subtitle>
 
       <v-card-text>
-        <v-form v-model="isValid" validate-on="blur" @submit.prevent="handleLogin">
+        <v-form
+          ref="form"                        
+          v-model="isValid"
+          validate-on="blur"
+          @submit.prevent="handleLogin"
+        >
           <!-- Username or Email -->
           <v-text-field
             v-model="usernameOrEmail"
@@ -72,11 +77,12 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { login, fetchMe } from '@/services/api' // ← adjust path if needed only
+import { login, fetchMe } from '@/services/api' // keep as-is
 
 const router = useRouter()
 const route = useRoute()
 
+const form = ref(null)          // NEW
 const isValid = ref(false)
 const loading = ref(false)
 const show = ref(false)
@@ -91,26 +97,37 @@ const rules = {
 }
 
 async function handleLogin() {
-  loading.value = true
   errorMsg.value = ''
+
+  // NEW: actively validate at submit time
+  const result = await form.value?.validate?.()
+  if (result && result.valid === false) return
+
+  loading.value = true
   try {
-    // Calls POST /api/auth/login with x-www-form-urlencoded { username, password }
     const { access_token } = await login(
       usernameOrEmail.value.trim(),
       password.value,
       { remember: remember.value },
     )
+    if (!access_token) {
+      throw new Error('No token returned from server.')
+    }
 
-    // Optional: fetch profile if you exposed /api/me
+    // Optional profile cache
     try {
       const me = await fetchMe()
       localStorage.setItem('me', JSON.stringify(me))
     } catch { /* no-op */ }
 
-    const redirectTo = route.query.redirect || '/'
-    router.replace(String(redirectTo))
+    // NEW: support both ?next= and ?redirect= (depends on your router guard)
+    const next = route.query.next || route.query.redirect || '/'
+    router.replace(String(next))
   } catch (e) {
-    errorMsg.value = e?.message || 'Invalid credentials'
+    // Friendlier 401 message if your api throws with status
+    const msg = e?.message || ''
+    errorMsg.value =
+      /401|unauthor/i.test(msg) ? 'Invalid username or password' : msg || 'Sign-in failed'
   } finally {
     loading.value = false
   }
