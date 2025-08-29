@@ -1,4 +1,4 @@
-<!-- src/pages/UsersList.vue ------->
+<!-- src/pages/UsersList.vue -->
 <template>
   <div class="page">
     <main class="hero">
@@ -71,8 +71,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-
-const USE_MOCK = false  // ← set true to use mock data
+import { listUsers, patchUser, deleteUser } from '../services/users'
 
 const loading = ref(true)
 const saving = ref(false)
@@ -90,39 +89,28 @@ const enumToRoleLabel = { admin: 'Admin', manager: 'Manager', employee: 'Employe
 const deleteOpen = ref(false)
 const toDelete = ref(null)
 
-const mockUsers = [
-  { id: 'U-101', full_name: 'Sanuja Kobbekaduwe', username: 'sanuja', email: 'sanuja@abacus.lk', role: 'admin' },
-  { id: 'U-102', full_name: 'Jane Doe',            username: 'jane',   email: 'jane@abacus.lk',   role: 'manager' },
-  { id: 'U-103', full_name: 'Ashen Perera',        username: 'ashen',  email: 'ashen@abacus.lk',  role: 'employee' },
-  { id: 'U-104', full_name: 'Nuwan Silva',         username: 'nuwan',  email: 'nuwan@abacus.lk',  role: 'employee' },
-  { id: 'U-105', full_name: 'Kavinda Fernando',    username: 'kavi',   email: 'kavi@abacus.lk',   role: 'manager' },
-]
-
 const prettyRole = (r) => enumToRoleLabel[r] ?? r ?? '-'
 
-onMounted(async () => {
+async function load() {
+  loading.value = true
+  error.value = ''
   try {
-    if (USE_MOCK) {
-      await new Promise(r => setTimeout(r, 300))
-      users.value = mockUsers
-    } else {
-      const res = await fetch('/api/users', { headers: { Accept: 'application/json' } })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      users.value = await res.json()
-    }
+    const data = await listUsers()
+    users.value = Array.isArray(data) ? data : (data?.items ?? [])
   } catch (e) {
-    error.value = 'Failed to load users.'
+    error.value = e?.message || 'Failed to load users.'
   } finally {
     loading.value = false
   }
-})
+}
+onMounted(load)
 
 function openEdit(u) {
   draft.value = {
     id: u.id,
-    full_name: u.full_name,
-    username: u.username,
-    email: u.email,
+    full_name: u.full_name ?? '',
+    username: u.username ?? '',
+    email: u.email ?? '',
     roleLabel: enumToRoleLabel[u.role] ?? '',
   }
   editOpen.value = true
@@ -132,6 +120,7 @@ async function saveEdit() {
   if (!draft.value) return
   saving.value = true
 
+  // build minimal PATCH
   const original = users.value.find(x => x.id === draft.value.id) || {}
   const maybe = {
     full_name: draft.value.full_name?.trim(),
@@ -147,32 +136,15 @@ async function saveEdit() {
 
   const idx = users.value.findIndex(x => x.id === draft.value.id)
   const previous = idx !== -1 ? { ...users.value[idx] } : null
-
   if (idx !== -1) users.value[idx] = { ...users.value[idx], ...payload }
 
   try {
-    if (!USE_MOCK) {
-      const res = await fetch(`/api/users/${encodeURIComponent(draft.value.id)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        if (idx !== -1 && previous) users.value[idx] = previous
-        let msg = `Update failed (HTTP ${res.status})`
-        try {
-          const data = await res.json()
-          if (data?.detail) msg = Array.isArray(data.detail) ? data.detail.map(d => d.msg || d).join(', ') : data.detail
-        } catch {}
-        throw new Error(msg)
-      } else {
-        const updated = await res.json()
-        if (idx !== -1) users.value[idx] = updated
-      }
-    }
+    const updated = await patchUser(draft.value.id, payload)
+    if (idx !== -1) users.value[idx] = updated
     editOpen.value = false
   } catch (e) {
-    error.value = e.message || 'Update failed.'
+    if (idx !== -1 && previous) users.value[idx] = previous
+    error.value = e?.message || 'Update failed.'
   } finally {
     saving.value = false
   }
@@ -191,15 +163,12 @@ async function performDelete() {
   users.value = users.value.filter(u => u.id !== id)
 
   try {
-    if (!USE_MOCK) {
-      const res = await fetch(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Delete failed')
-    }
+    await deleteUser(id)
     deleteOpen.value = false
     toDelete.value = null
   } catch (e) {
     users.value = prev
-    error.value = e.message || 'Delete failed.'
+    error.value = e?.message || 'Delete failed.'
   } finally {
     deleting.value = false
   }
@@ -212,7 +181,6 @@ async function performDelete() {
 .hero h1 { font-size: clamp(24px, 4vw, 32px); margin-bottom: 6px; }
 .hero p  { color: #111; margin: 0 0 20px; }
 
-/* --- Grid layout: 4 cards per row --- */
 .grid-4 {
   display: grid;
   grid-template-columns: repeat(4, minmax(260px, 1fr));
@@ -220,18 +188,11 @@ async function performDelete() {
   margin-top: 20px;
   text-align: left;
 }
-
 @media (max-width: 1200px){ .grid-4 { grid-template-columns: repeat(3, minmax(240px, 1fr)); } }
 @media (max-width: 900px)  { .grid-4 { grid-template-columns: repeat(2, minmax(220px, 1fr)); } }
 @media (max-width: 600px)  { .grid-4 { grid-template-columns: 1fr; } }
 
-/* --- Card styling: bigger, more padded --- */
-.user-card {
-  border-radius: 16px;
-  padding: 12px;
-  min-height: 220px;
-}
-
+.user-card { border-radius: 16px; padding: 12px; min-height: 220px; }
 .row { display: flex; justify-content: space-between; gap: 10px; margin: 8px 0; }
 .label { color: #555; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; }
 .value { font-weight: 600; }
