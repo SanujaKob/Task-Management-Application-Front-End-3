@@ -1,257 +1,247 @@
-<!-- src/pages/MyTasksPage.vue -->
 <script setup>
-import { ref, onMounted } from "vue";
-import MyTaskDashboard from "@/components/MyTaskDashboard.vue";
-import MyTasksBreakdown from "@/components/MyTasksBreakdown.vue";
+import { ref, computed, onMounted, watch } from 'vue'
+import { listMyTasks, updateTask } from '@/services/tasks'
 
-// Use your resilient service
-import {
-  updateTask as apiUpdateTask,
-  deleteTask as apiDeleteTask,
-  listMyTasks,
-  listTasks,
-  listAssignees,
-} from "@/services/tasks";
+/* ---------- state ---------- */
+const tasks = ref([])
+const loading = ref(false)
+const error = ref('')
 
-/** Flip this to "assignee" if your backend expects that key */
-const ASSIGNEE_KEY = "assignee_id";
+const q = ref('')
+const statusFilter = ref(null)
+const overdueOnly = ref(false)
 
-/* state */
-const tasks = ref([]);
-const loading = ref(false);
-const error = ref("");
+/* Only real workflow statuses — no “Not Started”, no synthetic “Over Due” */
+const statusOptions = ['To Do','In Progress','Completed','Approved','Rejected','Re-Submission']
+const priorityOptions = ['Low','Normal','High','Critical']
 
-/* current user */
-const currentUser = localStorage.getItem("full_name") || "Sanuja";
-const currentUserId = localStorage.getItem("user_id") || "";
-
-/* options */
-const statusOptions = ["To Do","In Progress","Completed","Approved","Rejected","Re-Submission"];
-const priorityOptions = ["Low","Medium","High"];
-
-/* users (optional) */
-const users = ref([]);
-const usersLoading = ref(false);
-
-/* edit dialog */
-const editOpen = ref(false);
-const draft = ref(null);
-const editErr = ref("");
-
-/* helpers */
-function mapTask(raw) {
-  const assignee_id = raw.assignee_id ?? raw.assignee ?? null;
-  return {
-    id: raw.id ?? raw._id,
-    title: raw.title ?? "",
-    description: raw.description ?? "",
-    status: raw.status ?? "To Do",
-    priority: raw.priority ?? "Medium",
-    due_date: raw.due_date ?? raw.dueDate ?? null,
-    percent_complete: raw.percent_complete ?? raw.progress ?? 0,
-    assignee_id,
-    assignee: assignee_id,
-    created_by: raw.created_by ?? raw.created_by_id ?? null,
-    created_at: raw.created_at ?? raw.createdAt ?? null,
-    updated_at: raw.updated_at ?? raw.updatedAt ?? null,
-  };
-}
-
-/* loads */
-async function fetchTasks() {
-  loading.value = true; error.value = "";
+/* ---------- data loading ---------- */
+async function load() {
+  loading.value = true
+  error.value = ''
   try {
-    let data = [];
-    try {
-      data = await listMyTasks();
-    } catch {
-      // fallback: list all and client-filter
-      data = await listTasks();
+    const params = {
+      q: q.value || undefined,
+      status: statusFilter.value || undefined,         // omit when blank
+      overdue: overdueOnly.value ? true : undefined,  // omit when false
     }
-    let list = (Array.isArray(data) ? data : []).map(mapTask);
-
-    if (currentUserId) {
-      const me = String(currentUserId).toLowerCase();
-      const filtered = list.filter(
-        (t) =>
-          String(t.assignee_id ?? "").toLowerCase() === me ||
-          String(t.created_by ?? "").toLowerCase() === me
-      );
-      if (filtered.length) list = filtered;
-    }
-    tasks.value = list;
+    tasks.value = await listMyTasks(params)
   } catch (e) {
-    error.value = e?.message || "Failed to fetch tasks";
+    error.value = e?.message || 'Failed to load my tasks.'
   } finally {
-    loading.value = false;
+    loading.value = false
   }
 }
 
-async function fetchUsers() {
-  usersLoading.value = true;
+onMounted(load)
+let deb
+watch([q, statusFilter, overdueOnly], () => {
+  clearTimeout(deb)
+  deb = setTimeout(load, 300)
+})
+
+const filtered = computed(() => {
+  const needle = q.value.trim().toLowerCase()
+  if (!needle) return tasks.value
+  return tasks.value.filter(t =>
+    String(t.id ?? '').toLowerCase().includes(needle) ||
+    String(t.title ?? '').toLowerCase().includes(needle) ||
+    String(t.description ?? '').toLowerCase().includes(needle)
+  )
+})
+
+/* ---------- edit modal ---------- */
+const showEdit = ref(false)
+const saving = ref(false)
+const editErr = ref('')
+const original = ref(null)
+const form = ref({
+  id: null,
+  title: '',
+  description: '',
+  status: 'To Do',     // ← single source of truth for status
+  priority: 'Normal',
+  due_date: null,      // yyyy-mm-dd string or null
+  percent_complete: 0,
+})
+
+function openEdit(task) {
+  original.value = { ...task } // snapshot for diffing
+  form.value = {
+    id: task.id,
+    title: task.title ?? '',
+    description: task.description ?? '',
+    status: statusOptions.includes(task.status) ? task.status : 'To Do',
+    priority: priorityOptions.includes(task.priority) ? task.priority : 'Normal',
+    due_date: task.due_date ? String(task.due_date).slice(0, 10) : null,
+    percent_complete: clamp0to100(Number(task.percent_complete ?? 0)),
+  }
+  editErr.value = ''
+  showEdit.value = true
+}
+
+function clamp0to100(n) {
+  if (!Number.isFinite(n)) return 0
+  return Math.min(100, Math.max(0, Math.round(n)))
+}
+
+function toISODateOrNull(val) {
+  if (!val) return null
   try {
-    const data = await listAssignees();
-    const arr = Array.isArray(data) ? data : [];
-    users.value = arr.map((u) => ({
-      id: u.id ?? u._id ?? u.username ?? u.email,
-      label: u.full_name || u.username || u.email || String(u.id),
-    }));
-  } catch {
-    users.value = [];
-  } finally {
-    usersLoading.value = false;
-  }
+    // yyyy-mm-dd → ISO midnight (safe for FastAPI/SQLModel)
+    const d = new Date(`${val}T00:00:00`)
+    return d.toISOString()
+  } catch { return null }
 }
 
-/* interactions */
-async function onUpdateStatus({ id, newStatus }) {
-  // optimistic immutable update -> triggers regrouping
-  const prevTasks = tasks.value;
-  const nextTasks = prevTasks.map((t) =>
-    t.id === id ? { ...t, status: newStatus, updated_at: new Date().toISOString() } : t
-  );
-  tasks.value = nextTasks;
+function buildPatch() {
+  const p = {}
 
-  try {
-    await apiUpdateTask(id, { status: newStatus });
-  } catch (e) {
-    tasks.value = prevTasks; // revert
-    console.error("Update status failed:", e?.message || e);
+  // title
+  const newTitle = (form.value.title ?? '').trim()
+  const oldTitle = (original.value.title ?? '').trim()
+  if (newTitle && newTitle !== oldTitle) p.title = newTitle
+
+  // description (allow clearing → null)
+  const newDesc = (form.value.description ?? '').trim()
+  const oldDesc = (original.value.description ?? '').trim()
+  if (newDesc !== oldDesc) p.description = newDesc || null
+
+  // status (only if changed)
+  const newStatus = form.value.status || null
+  if (newStatus && newStatus !== original.value.status) p.status = newStatus
+
+  // priority (only if changed)
+  if ((form.value.priority ?? 'Normal') !== (original.value.priority ?? 'Normal')) {
+    p.priority = form.value.priority
   }
-}
 
-function onEdit(task) {
-  editErr.value = "";
-  draft.value = {
-    ...task,
-    assignee_id: task.assignee_id ?? task.assignee ?? null,
-    percent_complete: Number.isFinite(task.percent_complete) ? task.percent_complete : 0,
-  };
-  editOpen.value = true;
+  // due_date (send ISO or null, only if changed)
+  const oldDate = original.value.due_date ? String(original.value.due_date).slice(0, 10) : null
+  if (form.value.due_date !== oldDate) {
+    p.due_date = form.value.due_date ? toISODateOrNull(form.value.due_date) : null
+  }
+
+  // percent_complete
+  const pc = clamp0to100(form.value.percent_complete)
+  const oldPc = clamp0to100(Number(original.value.percent_complete ?? 0))
+  if (pc !== oldPc) p.percent_complete = pc
+
+  return p
 }
 
 async function saveEdit() {
-  if (!draft.value) return;
-  editErr.value = "";
-
-  const id = draft.value.id;
-  const payload = {
-    title: draft.value.title?.trim() || "",
-    description: draft.value.description ?? "",
-    status: draft.value.status,
-    priority: draft.value.priority,
-    percent_complete: Math.max(0, Math.min(100, Number(draft.value.percent_complete ?? 0))),
-    due_date: draft.value.due_date || null,
-    [ASSIGNEE_KEY]: draft.value.assignee_id ?? null,
-  };
-
-  // optimistic immutable update
-  const prevTasks = tasks.value;
-  tasks.value = prevTasks.map((t) =>
-    t.id === id ? { ...t, ...payload, assignee_id: payload[ASSIGNEE_KEY], updated_at: new Date().toISOString() } : t
-  );
-
+  if (!form.value.id) return
+  saving.value = true
+  editErr.value = ''
   try {
-    await apiUpdateTask(id, payload);
-    editOpen.value = false;
+    const patch = buildPatch()
+    if (!Object.keys(patch).length) {
+      showEdit.value = false
+      return
+    }
+    await updateTask(form.value.id, patch)  // PATCH-first (services/tasks.js) then fallback to PUT
+    await load()                            // re-sync with server (timestamps/normalization)
+    showEdit.value = false
   } catch (e) {
-    tasks.value = prevTasks; // revert
-    editErr.value = e?.message || "Update failed";
+    // surface server validation clearly
+    const detail = e?.detail
+    if (Array.isArray(detail)) {
+      editErr.value = detail.map(x => x?.msg || x).join(', ')
+    } else {
+      editErr.value = e?.message || 'Failed to save'
+    }
+  } finally {
+    saving.value = false
   }
 }
-
-async function onDelete(task) {
-  const ok = window.confirm(`Delete task ${task.id}?`);
-  if (!ok) return;
-  try {
-    await apiDeleteTask(task.id);
-    tasks.value = tasks.value.filter((t) => t.id !== task.id);
-  } catch (e) {
-    console.error("Delete failed:", e?.message || e);
-  }
-}
-
-/* init */
-onMounted(async () => {
-  await fetchTasks();
-  fetchUsers(); // optional
-});
 </script>
 
 <template>
   <div class="page">
-    <main class="hero">
-      <h1>Stay on top of your tasks</h1>
-      <p>Simple, fast task management - create tasks, track progress, and hit deadlines.</p>
+    <h1>My Tasks</h1>
 
-      <div v-if="loading" class="status">Loading your tasks…</div>
-      <div v-else-if="error" class="status error">{{ error }}</div>
+    <section class="toolbar">
+      <v-text-field
+        v-model="q"
+        label="Search (id / title / desc)"
+        hide-details
+        density="comfortable"
+        clearable
+      />
+      <v-select
+        v-model="statusFilter"
+        :items="statusOptions"
+        label="Status"
+        clearable
+        hide-details
+        density="comfortable"
+      />
+      <v-checkbox v-model="overdueOnly" label="Overdue only" density="compact" hide-details />
+      <v-btn variant="tonal" :loading="loading" @click="load">Refresh</v-btn>
+    </section>
 
-      <section class="home">
-        <MyTaskDashboard :tasks="tasks" />
-      </section>
+    <div v-if="loading" class="status">Loading…</div>
+    <div v-else-if="error" class="status error">{{ error }}</div>
 
-      <section class="home">
-        <MyTasksBreakdown
-          :tasks="tasks"
-          :currentUser="currentUser"
-          :currentUserId="currentUserId"
-          :users="users"
-          @update-status="onUpdateStatus"
-          @edit="onEdit"
-          @delete="onDelete"
-        />
-      </section>
-    </main>
+    <div v-else>
+      <div v-if="filtered.length === 0" class="empty">No tasks to show.</div>
 
-    <!-- Edit dialog (unchanged layout) -->
-    <v-dialog v-model="editOpen" max-width="720">
+      <div v-else class="list">
+        <div v-for="t in filtered" :key="t.id" class="item">
+          <div class="row">
+            <div class="title">
+              <b>{{ t.title ?? '(Untitled Task)' }}</b>
+              <span class="muted">#{{ t.id }}</span>
+            </div>
+            <div class="meta">
+              <span>{{ t.status ?? 'To Do' }}</span>
+              <span>· {{ t.priority ?? 'Normal' }}</span>
+              <span>· Due: {{ t.due_date ?? '—' }}</span>
+              <span>· {{ t.percent_complete ?? 0 }}%</span>
+            </div>
+          </div>
+
+          <div class="desc">{{ t.description ?? '—' }}</div>
+
+          <div class="actions">
+            <v-btn size="small" variant="text" @click="openEdit(t)">Edit</v-btn>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <v-dialog v-model="showEdit" max-width="560">
       <v-card>
-        <v-card-title>Edit Task</v-card-title>
+        <v-card-title>Edit Task #{{ form.id }}</v-card-title>
+        <v-card-text>
+          <div class="form-grid">
+            <v-text-field v-model="form.title" label="Title" />
+            <v-textarea v-model="form.description" label="Description" rows="3" />
 
-        <v-card-text v-if="draft" class="grid gap-3">
-          <v-alert v-if="editErr" type="error" density="comfortable" variant="tonal">
-            {{ editErr }}
-          </v-alert>
+            <v-select v-model="form.status" :items="statusOptions" label="Status" />
 
-          <v-text-field v-model="draft.title" label="Title" />
-          <v-textarea v-model="draft.description" label="Description" auto-grow />
+            <v-select v-model="form.priority" :items="priorityOptions" label="Priority" />
 
-          <div class="grid md:grid-cols-2 gap-3">
-            <v-select :items="statusOptions" v-model="draft.status" label="Status" />
-            <v-select :items="priorityOptions" v-model="draft.priority" label="Priority" />
+            <v-text-field v-model="form.due_date" label="Due date" type="date" hide-details />
+
+            <v-slider
+              v-model="form.percent_complete"
+              label="Percent complete"
+              step="1"
+              min="0"
+              max="100"
+              thumb-label
+            />
           </div>
 
-          <div class="grid md:grid-cols-2 gap-3">
-            <template v-if="users.length">
-              <v-autocomplete
-                v-model="draft.assignee_id"
-                :items="users"
-                item-title="label"
-                item-value="id"
-                :loading="usersLoading"
-                label="Assignee"
-                :return-object="false"
-                clearable
-              />
-            </template>
-            <template v-else>
-              <v-text-field v-model="draft.assignee_id" label="Assignee" />
-            </template>
-
-            <v-text-field :model-value="draft.created_by ?? '—'" label="Created By" readonly />
-          </div>
-
-          <div class="grid md:grid-cols-2 gap-3">
-            <v-text-field v-model.number="draft.percent_complete" label="Percent Complete" type="number" min="0" max="100" />
-            <v-text-field v-model="draft.due_date" label="Due Date" type="date" />
-          </div>
+          <div v-if="editErr" class="status error" style="margin-top:6px">{{ editErr }}</div>
         </v-card-text>
-
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="editOpen = false">Cancel</v-btn>
-          <v-btn color="primary" @click="saveEdit">Save</v-btn>
+          <v-btn variant="text" @click="showEdit = false" :disabled="saving">Cancel</v-btn>
+          <v-btn variant="flat" color="primary" @click="saveEdit" :loading="saving">Save</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -259,24 +249,19 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page {
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  background: #ffffff;
-  color: #000000;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  font-family: "Poppins", system-ui, sans-serif;
-}
-.hero { max-width: 960px; margin: 40px auto; padding: 0 16px; text-align: center; }
-.hero h1 { font-size: clamp(24px, 4vw, 32px); margin-bottom: 10px; }
-.hero p { color: #111; margin: 0 auto 12px; max-width: 600px; }
-.status { margin: 8px 0 0; font-size: 14px; }
-.status.error { color: #b91c1c; }
-.home { margin-top: 24px; text-align: left; }
-.grid { display: grid; gap: 12px; }
-.md\:grid-cols-2 { grid-template-columns: 1fr; }
-@media (min-width: 768px) { .md\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); } }
+.page { max-width: 1000px; margin: 0 auto; padding: 16px; }
+.toolbar { display: grid; grid-template-columns: 1fr 220px auto auto; gap: 12px; align-items: center; margin: 12px 0; }
+@media (max-width: 900px){ .toolbar { grid-template-columns: 1fr; } }
+.status { margin-top: 8px; opacity: .8; }
+.status.error { color: #b00020; }
+.empty { opacity: .75; padding: 10px; }
+
+.list { display: grid; gap: 12px; }
+.item { border: 1px solid #e7e8ec; border-radius: 10px; padding: 12px; }
+.row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.title .muted { margin-left: 8px; opacity: .6; font-weight: 400; }
+.meta { opacity: .85; display: flex; gap: 8px; flex-wrap: wrap; }
+.desc { margin-top: 6px; }
+.actions { display:flex; justify-content:flex-end; margin-top:8px; }
+.form-grid { display: grid; gap: 12px; }
 </style>
