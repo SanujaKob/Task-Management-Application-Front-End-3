@@ -16,7 +16,11 @@ const toURL = (path, qs = "") => {
     return qs ? `${u}?${qs}` : u;
 };
 
-/** Resolve path for the axios-like shim */
+/** Resolve path for the axios-like shim:
+ * - If BASE is empty (proxy mode) and path doesn't start with DEFAULT_PREFIX,
+ *   prefix it so calls like api.get('/tasks') become '/api/tasks'.
+ * - If BASE is set, use the path verbatim (no prefixing).
+ */
 function resolvePath(path) {
     if (!path.startsWith("/")) path = `/${path}`;
     if (!BASE && DEFAULT_PREFIX && !path.startsWith(`${DEFAULT_PREFIX}/`) && path !== DEFAULT_PREFIX) {
@@ -103,8 +107,19 @@ export async function apiFetch(path, init = {}, params) {
         finalInit.body = JSON.stringify(init.body);
     }
 
+    // ✅ Normalize the path the same way the shim does
+    const p = resolvePath(path);
     const qs = params ? toQuery(params) : "";
-    return fetch(toURL(path, qs), finalInit);
+
+    // 🔎 Dev log: verify token is being sent
+    if (import.meta.env?.DEV) {
+        const method = (init.method || "GET").toUpperCase();
+        if (method !== "GET" || /\/users|\/tasks|\/auth\//.test(p)) {
+            console.debug("[apiFetch]", method, p, { hasToken: !!token });
+        }
+    }
+
+    return fetch(toURL(p, qs), finalInit);
 }
 
 // ---- Auth ----
@@ -127,25 +142,25 @@ export async function login(identifier, password, { remember = true } = {}) {
 
 // ---- Users ----
 export async function fetchMe() {
-    const res = await apiFetch("/api/users/me", { method: "GET" });
+    const res = await apiFetch("/users/me", { method: "GET" });   // ✅ no hardcoded /api
     return handleResponse(res);
 }
 export async function createUser(payload) {
-    const res = await apiFetch("/api/users", { method: "POST", body: payload });
+    const res = await apiFetch("/users", { method: "POST", body: payload });
     return handleResponse(res);
 }
 export async function listUsers() {
-    const res = await apiFetch("/api/users", { method: "GET" });
+    const res = await apiFetch("/users", { method: "GET" });
     return handleResponse(res);
 }
 
 // ---- Tasks ----
 export async function createTask(payload) {
-    const res = await apiFetch("/api/tasks", { method: "POST", body: payload });
+    const res = await apiFetch("/tasks", { method: "POST", body: payload });
     return handleResponse(res);
 }
 export async function listTasks() {
-    const res = await apiFetch("/api/tasks", { method: "GET" });
+    const res = await apiFetch("/tasks", { method: "GET" });
     return handleResponse(res);
 }
 

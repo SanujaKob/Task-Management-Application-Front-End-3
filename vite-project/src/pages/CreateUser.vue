@@ -8,57 +8,16 @@
 
       <v-form v-model="isValid" @submit.prevent="handleSubmit" validate-on="blur">
         <div class="grid">
-          <v-text-field
-            v-model="form.username"
-            label="Username"
-            :rules="[rules.required]"
-            required
-          />
+          <v-text-field v-model="form.username" label="Username" :rules="[rules.required]" required />
+          <v-text-field v-model="form.first_name" label="First Name" :rules="[rules.required]" required />
+          <v-text-field v-model="form.last_name"  label="Last Name"  :rules="[rules.required]" required />
+          <v-text-field v-model="form.email"      label="Email" type="email" :rules="[rules.required, rules.email]" required />
 
-          <v-text-field
-            v-model="form.first_name"
-            label="First Name"
-            :rules="[rules.required]"
-            required
-          />
+          <v-select v-model="form.roleLabel" :items="roleLabels" label="Role" :rules="[rules.required]" required />
 
-          <v-text-field
-            v-model="form.last_name"
-            label="Last Name"
-            :rules="[rules.required]"
-            required
-          />
-
-          <v-text-field
-            v-model="form.email"
-            label="Email"
-            type="email"
-            :rules="[rules.required, rules.email]"
-            required
-          />
-
-          <v-select
-            v-model="form.roleLabel"
-            :items="roleLabels"
-            label="Role"
-            :rules="[rules.required]"
-            required
-          />
-
-          <v-text-field
-            v-model="form.password"
-            label="Password"
-            type="password"
-            :rules="[rules.required, rules.min8]"
-            required
-          />
-          <v-text-field
-            v-model="form.confirm_password"
-            label="Confirm Password"
-            type="password"
-            :rules="[rules.required, rules.matchPassword(form.password)]"
-            required
-          />
+          <v-text-field v-model="form.password"          label="Password" type="password" :rules="[rules.required, rules.min8]" required />
+          <v-text-field v-model="form.confirm_password"  label="Confirm Password" type="password"
+                        :rules="[rules.required, rules.matchPassword(form.password)]" required />
         </div>
 
         <div class="actions">
@@ -69,14 +28,7 @@
           <v-btn variant="outlined" @click="resetForm" :disabled="submitting">Reset</v-btn>
         </div>
 
-        <v-alert
-          v-if="message.text"
-          :type="message.type"
-          variant="tonal"
-          class="mt-4"
-          closable
-          @click:close="message.text = ''"
-        >
+        <v-alert v-if="message.text" :type="message.type" variant="tonal" class="mt-4" closable @click:close="message.text = ''">
           {{ message.text }}
         </v-alert>
       </v-form>
@@ -86,19 +38,20 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
+import { createUser } from '@/services/users'   // ✅ use the service so Authorization is attached
 
 const isValid = ref(false)
 const submitting = ref(false)
 
-const roleLabels = ['Admin', 'Manager', 'Employee']           // UI labels
-const roleMap = { Admin: 'admin', Manager: 'manager', Employee: 'employee' } // enum values expected by backend
+const roleLabels = ['Admin', 'Manager', 'Employee']
+const roleMap = { Admin: 'admin', Manager: 'manager', Employee: 'employee' }
 
 const form = reactive({
   username: '',
   first_name: '',
   last_name: '',
   email: '',
-  roleLabel: '',
+  roleLabel: 'Employee',
   password: '',
   confirm_password: '',
 })
@@ -117,48 +70,32 @@ function resetForm() {
   form.first_name = ''
   form.last_name = ''
   form.email = ''
-  form.roleLabel = ''
+  form.roleLabel = 'Employee'
   form.password = ''
   form.confirm_password = ''
   message.text = ''
 }
 
 async function handleSubmit() {
-  // Build backend payload:
+  // Build backend payload expected by your API
   const payload = {
     username: form.username.trim(),
     email: form.email.trim(),
     full_name: `${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
-    role: roleMap[form.roleLabel] || '',    // enum value
+    role: roleMap[form.roleLabel] ?? 'employee',
     password: form.password,
   }
 
   submitting.value = true
   message.text = ''
   try {
-    // If you don’t use a Vite proxy, replace '/api' with your full base URL (e.g., http://127.0.0.1:8000/api)
-    const res = await fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-
-    if (!res.ok) {
-      // Try to surface FastAPI error messages like "Username already exists"
-      let errText = `HTTP ${res.status}`
-      try {
-        const data = await res.json()
-        if (data?.detail) errText = Array.isArray(data.detail) ? data.detail.map(d => d.msg || d).join(', ') : data.detail
-      } catch {}
-      throw new Error(errText)
-    }
-
+    await createUser(payload)                 // ✅ goes through api.js → adds Bearer token
     resetForm()
     message.type = 'success'
     message.text = 'User created successfully.'
   } catch (err) {
     message.type = 'error'
-    message.text = String(err?.message || err || 'Failed to create user. Check your backend or network.')
+    message.text = err?.message || 'Failed to create user.'
   } finally {
     submitting.value = false
   }
@@ -166,36 +103,13 @@ async function handleSubmit() {
 </script>
 
 <style scoped>
-.page {
-  width: 100%;
-  max-width: 960px;
-  margin: 0 auto;
-  background: #fff;
-  color: #000;
-  font-family: "Poppins", system-ui, sans-serif;
-}
-.hero {
-  margin: 40px auto;
-  padding: 0 16px;
-  text-align: center;
-}
+.page { width: 100%; max-width: 960px; margin: 0 auto; background: #fff; color: #000; font-family: "Poppins", system-ui, sans-serif; }
+.hero { margin: 40px auto; padding: 0 16px; text-align: center; }
 .hero h1 { font-size: clamp(24px, 4vw, 32px); margin-bottom: 6px; }
 .hero p  { color: #111; margin: 0 0 20px; }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
-  gap: 16px;
-  text-align: left;
-}
-@media (max-width: 700px) {
-  .grid { grid-template-columns: 1fr; }
-}
+.grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 16px; text-align: left; }
+@media (max-width: 700px){ .grid { grid-template-columns: 1fr; } }
 
-.actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 16px;
-  justify-content: center;
-}
+.actions { display: flex; gap: 12px; margin-top: 16px; justify-content: center; }
 </style>

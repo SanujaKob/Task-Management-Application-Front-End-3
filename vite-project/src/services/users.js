@@ -1,18 +1,30 @@
 // src/services/users.js
 import api from './api'
 
+/** Normalize list responses: array OR {items|results|data} */
+const asList = (data) =>
+    Array.isArray(data) ? data : (data?.items || data?.results || data?.data || [])
+
+/** GET /users */
 export async function listUsers() {
-    const r = await api.get('/api/users')
-    // accept common shapes: array, {items}, {results}, {data}
-    if (Array.isArray(r)) return r
-    return r?.items || r?.results || r?.data || []
+    const { data } = await api.get('/users')
+    return asList(data)
 }
 
-export function patchUser(id, body) {
-    // change to api.patch if your backend uses PATCH
-    return api.put(`/api/users/${encodeURIComponent(id)}`, body)
+/** POST /users */
+export async function createUser(payload) {
+    const { data } = await api.post('/users', payload)
+    return data
 }
 
-export function deleteUser(id) {
-    return api.del(`/api/users/${encodeURIComponent(id)}`)
+/** PATCH /users/:id (accepts string or numeric ids) */
+export async function patchUser(id, body) {
+    const { data } = await api.patch(`/users/${encodeURIComponent(id)}`, body)
+    return data
+}
+
+/** DELETE /users/:id */
+export async function deleteUser(id) {
+    const { data } = await api.delete(`/users/${encodeURIComponent(id)}`)
+    return data // note: backend returns 204 No Content → data may be ''
 }
