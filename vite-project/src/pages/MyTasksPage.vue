@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { listMyTasks, updateTask } from '@/services/tasks'
+import { listMyTasks, updateTask, deleteTask } from '@/services/tasks'
 
 // ------- Label <-> API mappings -------
 const STATUS_LABEL_TO_API = {
@@ -88,7 +88,7 @@ function openEdit(t) {
     status: STATUS_API_TO_LABEL[t.status] ?? 'To Do',
     priority: PRIORITY_API_TO_LABEL[t.priority] ?? 'Normal',
     due_date: t.due_date ? String(t.due_date).slice(0,10) : null,
-    percent_complete: clamp0to100(Number(t.percent_complete ?? 0)),
+    percent_complete: clamp0to100(Number(t.progress ?? 0)), // <- use progress
   }
   editErr.value = ''
   showEdit.value = true
@@ -105,9 +105,9 @@ function buildFullPayload() {
     description: (form.value.description ?? '').trim() || null,
     status: STATUS_LABEL_TO_API[form.value.status] || null,
     priority: PRIORITY_LABEL_TO_API[form.value.priority] || null,
-    // Backend accepts ISO or date string; we send yyyy-mm-dd or null
-    due_date: form.value.due_date || null,
-    percent_complete: clamp0to100(form.value.percent_complete),
+    due_date: form.value.due_date || null,               // 'YYYY-MM-DD' or null
+    // Send progress directly (backend also accepts percent_complete, but this is cleaner)
+    progress: clamp0to100(form.value.percent_complete),
   }
 }
 
@@ -121,7 +121,7 @@ async function saveEdit() {
   saving.value = true
   editErr.value = ''
   try {
-    await updateTask(taskKey, body)      // <- ACTUAL PUT
+    await updateTask(taskKey, body)      // <- PUT
     await load()
     showEdit.value = false
   } catch (e) {
@@ -131,6 +131,43 @@ async function saveEdit() {
     editErr.value = (e?.message || 'Request failed') + status + url + resp
   } finally {
     saving.value = false
+  }
+}
+
+// ------- Delete modal -------
+const showDelete = ref(false)
+const deleting   = ref(false)
+const deleteErr  = ref('')
+const toDeleteId = ref(null)
+const toDeleteTitle = ref('')
+
+function openDelete(t) {
+  toDeleteId.value = t.id
+  toDeleteTitle.value = t.title || '(Untitled Task)'
+  deleteErr.value = ''
+  showDelete.value = true
+}
+
+async function confirmDelete() {
+  if (!toDeleteId.value) return
+  deleting.value = true
+  deleteErr.value = ''
+  try {
+    await deleteTask(toDeleteId.value)
+    showDelete.value = false
+    await load()
+  } catch (e) {
+    if (e?.status === 401) {
+      const redirect = encodeURIComponent(location.pathname + location.search)
+      localStorage.removeItem('auth_token'); sessionStorage.removeItem('auth_token')
+      location.assign(`/login?redirect=${redirect}`); return
+    }
+    const status = e?.status ? ` [${e.status}]` : ''
+    const url    = e?.url ? `\n${e.url}` : ''
+    const resp   = e?.data ? `\n${JSON.stringify(e.data)}` : ''
+    deleteErr.value = (e?.message || 'Delete failed') + status + url + resp
+  } finally {
+    deleting.value = false
   }
 }
 </script>
@@ -163,12 +200,13 @@ async function saveEdit() {
               <span>{{ STATUS_API_TO_LABEL[t.status] ?? t.status }}</span>
               <span>· {{ PRIORITY_API_TO_LABEL[t.priority] ?? t.priority }}</span>
               <span>· Due: {{ t.due_date ?? '—' }}</span>
-              <span>· {{ t.percent_complete ?? 0 }}%</span>
+              <span>· {{ t.progress ?? 0 }}%</span> <!-- use progress -->
             </div>
           </div>
           <div class="desc">{{ t.description ?? '—' }}</div>
           <div class="actions">
             <v-btn size="small" variant="text" @click="openEdit(t)">Edit</v-btn>
+            <v-btn size="small" variant="text" color="error" @click="openDelete(t)">Delete</v-btn>
           </div>
         </div>
       </div>
@@ -193,6 +231,25 @@ async function saveEdit() {
           <v-spacer />
           <v-btn variant="text" @click="showEdit=false" :disabled="saving">Cancel</v-btn>
           <v-btn variant="flat" color="primary" @click="saveEdit" :loading="saving">Save</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Delete Confirm Modal -->
+    <v-dialog v-model="showDelete" max-width="480">
+      <v-card>
+        <v-card-title>Delete Task?</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete <b>#{{ toDeleteId }}</b> —
+          <i>{{ toDeleteTitle }}</i>? This cannot be undone.
+          <div v-if="deleteErr" class="status error" style="margin-top:8px; white-space:pre-wrap">
+            {{ deleteErr }}
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showDelete=false" :disabled="deleting">Cancel</v-btn>
+          <v-btn variant="flat" color="error" @click="confirmDelete" :loading="deleting">Delete</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
