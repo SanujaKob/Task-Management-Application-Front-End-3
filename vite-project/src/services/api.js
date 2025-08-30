@@ -16,11 +16,7 @@ const toURL = (path, qs = "") => {
     return qs ? `${u}?${qs}` : u;
 };
 
-/** Resolve path for the axios-like shim:
- * - If BASE is empty (proxy mode) and path doesn't start with DEFAULT_PREFIX,
- *   prefix it so calls like api.get('/tasks') become '/api/tasks'.
- * - If BASE is set, use the path verbatim (no prefixing).
- */
+/** Resolve path for the axios-like shim */
 function resolvePath(path) {
     if (!path.startsWith("/")) path = `/${path}`;
     if (!BASE && DEFAULT_PREFIX && !path.startsWith(`${DEFAULT_PREFIX}/`) && path !== DEFAULT_PREFIX) {
@@ -41,6 +37,9 @@ function toQuery(params = {}) {
 
 // ---- Response helper ----
 async function handleResponse(res) {
+    // ✅ Guard for 204 responses (no body)
+    if (res.status === 204) return null;
+
     if (!res.ok) {
         let msg = `HTTP ${res.status}`;
         try {
@@ -58,6 +57,7 @@ async function handleResponse(res) {
         }
         throw new Error(msg);
     }
+
     try {
         return await res.json();
     } catch {
@@ -107,7 +107,7 @@ export async function apiFetch(path, init = {}, params) {
     return fetch(toURL(path, qs), finalInit);
 }
 
-// ---- Auth (explicit '/api' because these are known backend routes) ----
+// ---- Auth ----
 export async function login(identifier, password, { remember = true } = {}) {
     const body = new URLSearchParams();
     body.set("username", identifier);
@@ -125,7 +125,7 @@ export async function login(identifier, password, { remember = true } = {}) {
     return data;
 }
 
-// ---- Users (helpers with explicit '/api' kept for convenience) ----
+// ---- Users ----
 export async function fetchMe() {
     const res = await apiFetch("/api/users/me", { method: "GET" });
     return handleResponse(res);
@@ -139,7 +139,7 @@ export async function listUsers() {
     return handleResponse(res);
 }
 
-// ---- Tasks (helpers with explicit '/api' kept if you call them directly) ----
+// ---- Tasks ----
 export async function createTask(payload) {
     const res = await apiFetch("/api/tasks", { method: "POST", body: payload });
     return handleResponse(res);
@@ -149,10 +149,8 @@ export async function listTasks() {
     return handleResponse(res);
 }
 
-// ---- Default export: axios-like shim (GET/POST/PATCH/PUT/DELETE) ----
-// Uses resolvePath() to auto-prefix '/api' in proxy mode, but respects absolute paths.
+// ---- Default export: axios-like shim ----
 const api = {
-    /** GET(path, { params, headers }) */
     async get(path, init = {}) {
         const p = resolvePath(path);
         const res = await apiFetch(p, { method: "GET", headers: init.headers }, init.params);
@@ -160,7 +158,6 @@ const api = {
         return { data };
     },
 
-    /** POST(path, body, { params, headers }) */
     async post(path, body, init = {}) {
         const p = resolvePath(path);
         const res = await apiFetch(p, { method: "POST", body, headers: init.headers }, init.params);
@@ -168,7 +165,6 @@ const api = {
         return { data };
     },
 
-    /** PATCH(path, body, { params, headers }) */
     async patch(path, body, init = {}) {
         const p = resolvePath(path);
         const res = await apiFetch(p, { method: "PATCH", body, headers: init.headers }, init.params);
@@ -176,7 +172,6 @@ const api = {
         return { data };
     },
 
-    /** PUT(path, body, { params, headers }) */
     async put(path, body, init = {}) {
         const p = resolvePath(path);
         const res = await apiFetch(p, { method: "PUT", body, headers: init.headers }, init.params);
@@ -184,7 +179,6 @@ const api = {
         return { data };
     },
 
-    /** DELETE(path, { params, headers }) */
     async delete(path, init = {}) {
         const p = resolvePath(path);
         const res = await apiFetch(p, { method: "DELETE", headers: init.headers }, init.params);
@@ -192,5 +186,8 @@ const api = {
         return { data };
     },
 };
+
+// ✅ Alias so you can call either api.delete(...) or api.del(...)
+api.del = api.delete;
 
 export default api;
