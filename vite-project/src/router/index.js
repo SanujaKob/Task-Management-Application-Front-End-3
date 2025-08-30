@@ -1,43 +1,61 @@
 // src/router/index.js
-import { createRouter, createWebHistory } from 'vue-router'
-import MyTasksPage from '../pages/MyTasksPage.vue'
-import UsersList from '../pages/UsersList.vue' // make sure this file exists
+import { createRouter, createWebHistory } from 'vue-router';
+import MyTasksPage from '@/pages/MyTasksPage.vue';
+import UsersList from '@/pages/UsersList.vue';
+import { getToken, getRole } from '@/services/auth';
+
+const routes = [
+    // Public
+    { path: '/login', name: 'login', component: () => import('@/pages/Login.vue'), meta: { public: true } },
+
+    // App (requires auth)
+    { path: '/', name: 'home', component: MyTasksPage, meta: { auth: true } },
+    { path: '/tasks/new', name: 'create-task', component: () => import('@/pages/CreateTask.vue'), meta: { auth: true } },
+
+    // Manager/Admin only
+    { path: '/team-tasks', name: 'team-tasks', component: () => import('@/pages/TeamTasks.vue'), meta: { auth: true, roles: ['manager', 'admin'] } },
+
+    // Admin only
+    { path: '/users', name: 'users', component: UsersList, meta: { auth: true, roles: ['admin'] } },
+    { path: '/users/new', name: 'create-user', component: () => import('@/pages/CreateUser.vue'), meta: { auth: true, roles: ['admin'] } },
+
+    // Any authed user
+    { path: '/profile', name: 'profile', component: () => import('@/pages/MyProfile.vue'), meta: { auth: true } },
+
+    // Friendly errors
+    { path: '/403', name: 'forbidden', component: () => import('@/pages/Forbidden.vue'), meta: { public: true } },
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/pages/NotFound.vue'), meta: { public: true } },
+];
 
 const router = createRouter({
     history: createWebHistory(),
-    routes: [
-        // Public
-        { path: '/login', name: 'login', component: () => import('../pages/Login.vue') }, // NEW
+    routes,
+    scrollBehavior() { return { top: 0, left: 0 }; },
+});
 
-        // App
-        { path: '/', name: 'home', component: MyTasksPage },
-        { path: '/tasks/new', name: 'create-task', component: () => import('../pages/CreateTask.vue') },
-        { path: '/team-tasks', name: 'team-tasks', component: () => import('../pages/TeamTasks.vue') }, // NEW
-        { path: '/users', name: 'users', component: UsersList },
-        { path: '/users/new', name: 'create-user', component: () => import('../pages/CreateUser.vue') },
-        { path: '/profile', name: 'profile', component: () => import('../pages/MyProfile.vue') },
-    ],
-    scrollBehavior: () => ({ top: 0 }),
-})
-
-/**
- * Simple auth guard:
- * - Allows /login without a token
- * - Redirects everything else to /login if no token is found
- * - Preserves intended destination in ?redirect=
- */
+// ---- Global auth/role guard ----
 router.beforeEach((to) => {
-    // Public route
-    if (to.name === 'login') return true
+    // Public routes always allowed
+    if (to.meta?.public) return true;
 
-    // Require token
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
-    if (!token) {
-        return { name: 'login', query: { redirect: to.fullPath } }
+    // Check auth if required
+    if (to.meta?.auth) {
+        const token = getToken();
+        if (!token) {
+            return { name: 'login', query: { redirect: to.fullPath } };
+        }
+
+        // If route restricts roles, enforce them
+        if (to.meta?.roles?.length) {
+            const role = getRole();
+            if (!role || !to.meta.roles.includes(role)) {
+                return { name: 'forbidden' };
+            }
+        }
     }
 
-    return true
-})
+    // Routes without explicit meta default to allow (public)
+    return true;
+});
 
-
-export default router
+export default router;

@@ -6,7 +6,7 @@
 
       <v-card-text>
         <v-form
-          ref="form"                        
+          ref="form"
           v-model="isValid"
           validate-on="blur"
           @submit.prevent="handleLogin"
@@ -75,61 +75,65 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { login, fetchMe } from '@/services/api' // keep as-is
+import { ref } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+// ✅ use the new auth helpers we wrote
+import { login, apiFetch } from '@/services/auth';
 
-const router = useRouter()
-const route = useRoute()
+const router = useRouter();
+const route = useRoute();
 
-const form = ref(null)          // NEW
-const isValid = ref(false)
-const loading = ref(false)
-const show = ref(false)
-const remember = ref(true)
-const usernameOrEmail = ref('')
-const password = ref('')
-const errorMsg = ref('')
+const form = ref(null);
+const isValid = ref(false);
+const loading = ref(false);
+const show = ref(false);
+const remember = ref(true);
+const usernameOrEmail = ref('');
+const password = ref('');
+const errorMsg = ref('');
 
 const rules = {
   required: v => (!!v || v === 0) || 'This field is required',
   min: n => v => !v || String(v).length >= n || `Minimum ${n} characters`,
-}
+};
 
 async function handleLogin() {
-  errorMsg.value = ''
+  errorMsg.value = '';
 
-  // NEW: actively validate at submit time
-  const result = await form.value?.validate?.()
-  if (result && result.valid === false) return
+  // Validate on submit
+  const result = await form.value?.validate?.();
+  if (result && result.valid === false) return;
 
-  loading.value = true
+  loading.value = true;
   try {
-    const { access_token } = await login(
+    // ✅ our login returns { token, role }
+    const { token, role } = await login(
       usernameOrEmail.value.trim(),
       password.value,
-      { remember: remember.value },
-    )
-    if (!access_token) {
-      throw new Error('No token returned from server.')
+      remember.value
+    );
+    if (!token) throw new Error('No token returned from server.');
+
+    // Optional: cache /users/me for quick access
+    try {
+      const me = await apiFetch('/users/me');
+      localStorage.setItem('me', JSON.stringify(me));
+    } catch {
+      // no-op; not fatal if /me is unavailable
     }
 
-    // Optional profile cache
-    try {
-      const me = await fetchMe()
-      localStorage.setItem('me', JSON.stringify(me))
-    } catch { /* no-op */ }
+    // Debug: see what role was captured (remove later)
+    // console.log('Logged in role:', role);
 
-    // NEW: support both ?next= and ?redirect= (depends on your router guard)
-    const next = route.query.next || route.query.redirect || '/'
-    router.replace(String(next))
+    // Support both ?next= and ?redirect=
+    const next = route.query.next || route.query.redirect || '/';
+    router.replace(String(next));
   } catch (e) {
-    // Friendlier 401 message if your api throws with status
-    const msg = e?.message || ''
+    const msg = e?.message || '';
     errorMsg.value =
-      /401|unauthor/i.test(msg) ? 'Invalid username or password' : msg || 'Sign-in failed'
+      /401|unauthor/i.test(msg) ? 'Invalid username or password' : msg || 'Sign-in failed';
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 </script>
