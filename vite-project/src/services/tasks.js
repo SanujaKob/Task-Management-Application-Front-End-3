@@ -114,3 +114,17 @@ export async function deleteTask(taskKey) {
     }
     return true; // 204 No Content expected
 }
+
+export async function listAllTasks() {
+    const res = await fetch('/api/tasks', { credentials: 'include' })
+    const text = await res.text()
+    let data = null
+    try { data = text ? JSON.parse(text) : null } catch { data = text || null }
+    if (!res.ok) {
+        const msg = (data && (data.detail || data.message)) || text || `HTTP ${res.status}`
+        const err = new Error(typeof msg === 'string' ? msg : 'Request failed')
+        err.status = res.status; err.data = data; err.url = '/api/tasks'
+        throw err
+    }
+    return data // array of TaskRead
+}
