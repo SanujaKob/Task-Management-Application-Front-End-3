@@ -1,12 +1,8 @@
 // src/services/tasks.js
-// Minimal, stable client that always hits /api/* and attaches the token.
-// Only the functions MyTasks/TeamTasks & update need.
-
-const BASE = "/api";
+// Minimal, explicit task API client using fetch (string or numeric IDs supported)
 
 function getToken() {
     try {
-        // read from either storage & common keys
         return (
             localStorage.getItem('auth_token') ||
             sessionStorage.getItem('auth_token') ||
@@ -19,98 +15,49 @@ function getToken() {
     }
 }
 
-
-function toQuery(params = {}) {
-    const sp = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-        if (v === undefined || v === null || v === "") continue;
-        sp.set(k, v);
-    }
-    const s = sp.toString();
-    return s ? `?${s}` : "";
-}
-
-async function apiGet(path, params) {
-    const url = `${BASE}${path}${toQuery(params)}`;
-    const token = getToken();
-    const res = await fetch(url, {
-        headers: {
-            Accept: "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-    });
-    const raw = await res.text();
+function okOrThrow(res, text, url) {
     let data = null;
-    try { data = raw ? JSON.parse(raw) : null; } catch { /* leave as text */ }
+    try { data = text ? JSON.parse(text) : null; } catch { data = text || null; }
     if (!res.ok) {
-        const msg = (data && (data.detail || data.message)) || raw || `HTTP ${res.status}`;
-        const err = new Error(typeof msg === "string" ? msg : "Request failed");
-        err.status = res.status; err.data = data ?? raw; err.url = url;
+        const msg = (data && (data.detail || data.message)) || text || `HTTP ${res.status}`;
+        const err = new Error(typeof msg === 'string' ? msg : 'Request failed');
+        err.status = res.status; err.data = data; err.url = url;
         throw err;
     }
-    return data ?? raw;
+    return data;
 }
 
-async function apiPut(path, body) {
-    const url = `${BASE}${path}`;
-    const token = getToken();
-    const res = await fetch(url, {
-        method: "PUT",
-        headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(body ?? {}),
-    });
-    const raw = await res.text();
-    let data = null;
-    try { data = raw ? JSON.parse(raw) : null; } catch { /* leave as text */ }
-    if (!res.ok) {
-        const msg = (data && (data.detail || data.message)) || raw || `HTTP ${res.status}`;
-        const err = new Error(typeof msg === "string" ? msg : "Request failed");
-        err.status = res.status; err.data = data ?? raw; err.url = url;
-        throw err;
-    }
-    return data ?? raw;
-}
-
-/* ---------- EXPORTS ---------- */
-
-// GET /api/tasks/my  → expecting { items: [...] }
 export async function listMyTasks(params = {}) {
-    const env = await apiGet("/tasks/my", params);
-    return Array.isArray(env?.items) ? env.items : (Array.isArray(env) ? env : []);
+    const u = new URL('/api/tasks/my', window.location.origin);
+    Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, v);
+    });
+
+    const url = u.pathname + u.search;
+    const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+            Accept: 'application/json',
+            ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        },
+    });
+    const text = await res.text();
+    return okOrThrow(res, text, url);
 }
 
-// GET /api/tasks/search  → expecting { items: [...] }
-export async function listTeamTasks(params = {}) {
-    const env = await apiGet("/tasks/search", params);
-    return Array.isArray(env?.items) ? env.items : (Array.isArray(env) ? env : []);
-}
+export async function updateTask(taskKey, body) {
+    const url = `/api/tasks/${encodeURIComponent(String(taskKey))}`;
+    console.log('[API] PUT', url, 'payload=', body);
 
-// PUT /api/tasks/:id  (simple, stable update)
-export async function updateTask(taskKey, patch) {
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
-    const url = `/api/tasks/${encodeURIComponent(String(taskKey))}`
     const res = await fetch(url, {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
         },
-        body: JSON.stringify(patch || {}),
-    })
-    const raw = await res.text()
-    let data = null
-    try { data = raw ? JSON.parse(raw) : null } catch { }
-    if (!res.ok) {
-        const msg = (data && (data.detail || data.message)) || raw || `HTTP ${res.status}`
-        const err = new Error(typeof msg === 'string' ? msg : 'Request failed')
-        err.status = res.status; err.url = url; err.data = data ?? raw
-        throw err
-    }
-    return data ?? raw
+        body: JSON.stringify(body || {}),
+    });
+    const text = await res.text();
+    return okOrThrow(res, text, url);
 }
-

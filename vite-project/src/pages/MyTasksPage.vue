@@ -2,59 +2,49 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { listMyTasks, updateTask } from '@/services/tasks'
 
-// ---------- Label <-> API mappings ----------
+// ------- Label <-> API mappings -------
 const STATUS_LABEL_TO_API = {
-  'To Do': 'not_started',
-  'In Progress': 'in_progress',
-  'Completed': 'completed',
-  'Approved': 'approved',
-  'Rejected': 'rejected',
-  'Re-Submission': 'resubmit',
+  'To Do':'not_started','In Progress':'in_progress','Completed':'completed',
+  'Approved':'approved','Rejected':'rejected','Re-Submission':'resubmit',
 }
 const STATUS_API_TO_LABEL = Object.fromEntries(
-  Object.entries(STATUS_LABEL_TO_API).map(([k, v]) => [v, k])
+  Object.entries(STATUS_LABEL_TO_API).map(([k,v]) => [v,k])
 )
 
 const PRIORITY_LABEL_TO_API = {
-  'Low': 'low',
-  'Normal': 'medium',
-  'High': 'high',
-  'Critical': 'critical',
+  'Low':'low','Normal':'medium','High':'high','Critical':'critical',
 }
 const PRIORITY_API_TO_LABEL = Object.fromEntries(
-  Object.entries(PRIORITY_LABEL_TO_API).map(([k, v]) => [v, k])
+  Object.entries(PRIORITY_LABEL_TO_API).map(([k,v]) => [v,k])
 )
 
-// ---------- State ----------
+// ------- State -------
 const tasks = ref([])
 const loading = ref(false)
 const error = ref('')
 
 const q = ref('')
-const statusFilter = ref(null)   // label
+const statusFilter = ref(null)            // label
 const overdueOnly = ref(false)
 
 const statusOptions = Object.keys(STATUS_LABEL_TO_API)
 const priorityOptions = Object.keys(PRIORITY_LABEL_TO_API)
 
-// ---------- Data load ----------
+// ------- Load -------
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const params = {
+    const res = await listMyTasks({
       q: q.value || undefined,
       status: statusFilter.value ? STATUS_LABEL_TO_API[statusFilter.value] : undefined,
       overdue: overdueOnly.value ? true : undefined,
-    }
-    const res = await listMyTasks(params)
+    })
     tasks.value = Array.isArray(res) ? res : (res?.items ?? [])
   } catch (e) {
     if (e?.status === 401) {
-      // Token invalid/expired → clear & redirect
       const redirect = encodeURIComponent(location.pathname + location.search)
-      localStorage.removeItem('auth_token')
-      sessionStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_token'); sessionStorage.removeItem('auth_token')
       location.assign(`/login?redirect=${redirect}`)
       return
     }
@@ -64,14 +54,13 @@ async function load() {
   }
 }
 
-onMounted(load)
-let deb
-watch([q, statusFilter, overdueOnly], () => {
-  clearTimeout(deb)
-  deb = setTimeout(load, 300)
+onMounted(() => {
+  console.log('MyTasksPage mounted')
+  load()
 })
+let deb; watch([q, statusFilter, overdueOnly], () => { clearTimeout(deb); deb = setTimeout(load, 300) })
 
-// ---------- Client-side search for current list ----------
+// ------- Client-side filter for current page -------
 const filtered = computed(() => {
   const needle = q.value.trim().toLowerCase()
   if (!needle) return tasks.value
@@ -82,30 +71,23 @@ const filtered = computed(() => {
   )
 })
 
-// ---------- Edit modal ----------
+// ------- Edit modal -------
 const showEdit = ref(false)
 const saving   = ref(false)
 const editErr  = ref('')
-const original = ref(null)
 const form = ref({
-  id: null,               // task_key: string or int from API
-  title: '',
-  description: '',
-  status: 'To Do',        // label
-  priority: 'Normal',     // label
-  due_date: null,         // yyyy-mm-dd
-  percent_complete: 0,
+  id:null, title:'', description:'', status:'To Do', priority:'Normal',
+  due_date:null, percent_complete:0,
 })
 
 function openEdit(t) {
-  original.value = { ...t }
   form.value = {
-    id: t.id, // raw key (may be string like "eeb07" or numeric)
+    id: t.id, // raw key (string or number)
     title: t.title ?? '',
     description: t.description ?? '',
     status: STATUS_API_TO_LABEL[t.status] ?? 'To Do',
     priority: PRIORITY_API_TO_LABEL[t.priority] ?? 'Normal',
-    due_date: t.due_date ? String(t.due_date).slice(0, 10) : null,
+    due_date: t.due_date ? String(t.due_date).slice(0,10) : null,
     percent_complete: clamp0to100(Number(t.percent_complete ?? 0)),
   }
   editErr.value = ''
@@ -113,58 +95,40 @@ function openEdit(t) {
 }
 
 function clamp0to100(n) {
-  const x = Number(n)
-  if (!Number.isFinite(x)) return 0
+  const x = Number(n); if (!Number.isFinite(x)) return 0
   return Math.min(100, Math.max(0, Math.round(x)))
 }
 
-function buildPatch() {
-  const p = {}
-
-  const newTitle = (form.value.title ?? '').trim()
-  const oldTitle = (original.value.title ?? '').trim()
-  if (newTitle && newTitle !== oldTitle) p.title = newTitle
-
-  const newDesc = (form.value.description ?? '').trim()
-  const oldDesc = (original.value.description ?? '').trim()
-  if (newDesc !== oldDesc) p.description = newDesc || null
-
-  const newStatusApi = STATUS_LABEL_TO_API[form.value.status] || null
-  if (newStatusApi && newStatusApi !== original.value.status) p.status = newStatusApi
-
-  const newPriorityApi = PRIORITY_LABEL_TO_API[form.value.priority] || null
-  if (newPriorityApi && newPriorityApi !== original.value.priority) p.priority = newPriorityApi
-
-  const oldDate = original.value.due_date ? String(original.value.due_date).slice(0, 10) : null
-  if (form.value.due_date !== oldDate) p.due_date = form.value.due_date || null
-
-  const pc = clamp0to100(form.value.percent_complete)
-  const oldPc = clamp0to100(Number(original.value.percent_complete ?? 0))
-  if (pc !== oldPc) p.percent_complete = pc
-
-  return p
+function buildFullPayload() {
+  return {
+    title: (form.value.title ?? '').trim() || null,
+    description: (form.value.description ?? '').trim() || null,
+    status: STATUS_LABEL_TO_API[form.value.status] || null,
+    priority: PRIORITY_LABEL_TO_API[form.value.priority] || null,
+    // Backend accepts ISO or date string; we send yyyy-mm-dd or null
+    due_date: form.value.due_date || null,
+    percent_complete: clamp0to100(form.value.percent_complete),
+  }
 }
 
 async function saveEdit() {
-  const taskKey = String(form.value.id ?? '').trim()  // backend accepts string or int
-  if (!taskKey) {
-    editErr.value = 'Missing task id.'
-    return
-  }
+  const taskKey = String(form.value.id ?? '').trim()
+  if (!taskKey) { editErr.value = 'Missing task id.'; return }
+
+  const body = buildFullPayload()
+  console.log('[SAVE] PUT', taskKey, body)
 
   saving.value = true
   editErr.value = ''
   try {
-    const patch = buildPatch()
-    if (!Object.keys(patch).length) { showEdit.value = false; return }
-    await updateTask(taskKey, patch)   // uses /api/tasks/{task_key}
+    await updateTask(taskKey, body)      // <- ACTUAL PUT
     await load()
     showEdit.value = false
   } catch (e) {
     const status = e?.status ? ` [${e.status}]` : ''
-    const where  = e?.url ? `\n${e.url}` : ''
-    const body   = e?.data ? `\n${typeof e.data === 'string' ? e.data : JSON.stringify(e.data)}` : ''
-    editErr.value = (e?.message || 'Request failed') + status + where + body
+    const url    = e?.url ? `\n${e.url}` : ''
+    const resp   = e?.data ? `\n${JSON.stringify(e.data)}` : ''
+    editErr.value = (e?.message || 'Request failed') + status + url + resp
   } finally {
     saving.value = false
   }
@@ -223,11 +187,11 @@ async function saveEdit() {
             <v-text-field v-model="form.due_date" label="Due date" type="date" hide-details />
             <v-slider v-model="form.percent_complete" label="Percent complete" step="1" min="0" max="100" thumb-label />
           </div>
-          <div v-if="editErr" class="status error" style="margin-top:6px">{{ editErr }}</div>
+          <div v-if="editErr" class="status error" style="margin-top:6px; white-space:pre-wrap">{{ editErr }}</div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="showEdit = false" :disabled="saving">Cancel</v-btn>
+          <v-btn variant="text" @click="showEdit=false" :disabled="saving">Cancel</v-btn>
           <v-btn variant="flat" color="primary" @click="saveEdit" :loading="saving">Save</v-btn>
         </v-card-actions>
       </v-card>
